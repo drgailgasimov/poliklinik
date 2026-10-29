@@ -1,8 +1,8 @@
 /* Poliklinik Defteri — çevrimdışı çalışma için service worker.
    Yalnızca uygulama dosyaları ve yazı tipleri önbelleğe alınır; hasta verisi asla. */
-const VERSION = 'pk-v1.0.0';
+const VERSION = 'pk-v1.2.0';
 const SHELL = [
-  './', 'index.html', 'app.css', 'core.js', 'drive.js', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'app.css', 'core.js', 'drive.js', 'xlsx.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/logo-tam.png', 'icons/logo-amblem.png'
 ];

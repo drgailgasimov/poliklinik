@@ -117,5 +117,39 @@
     return (await r.json()).id;
   }
 
-  root.Drive = { prepare, isReady, hasToken, signIn, signOut, findFile, download, upload };
+  /* ---------- görüntü dosyaları (her biri ayrı, şifreli) ---------- */
+  async function listImages() {
+    const out = new Map();
+    let pageToken = '';
+    do {
+      const q = encodeURIComponent("name contains 'img-' and trashed=false");
+      const r = await api(API + '?spaces=appDataFolder&q=' + q + '&fields=nextPageToken,files(id,name)&pageSize=1000' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''));
+      const j = await r.json();
+      for (const f of j.files || []) if (/^img-.+\.pki$/.test(f.name)) out.set(f.name, f.id);
+      pageToken = j.nextPageToken || '';
+    } while (pageToken);
+    return out;
+  }
+  async function uploadBytes(name, bytes) {
+    const boundary = 'pk' + Math.random().toString(36).slice(2);
+    const meta = JSON.stringify({ name, parents: ['appDataFolder'], mimeType: 'application/octet-stream' });
+    const head = new TextEncoder().encode('--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n--' + boundary + '\r\nContent-Type: application/octet-stream\r\n\r\n');
+    const tail = new TextEncoder().encode('\r\n--' + boundary + '--');
+    const body = new Uint8Array(head.length + bytes.length + tail.length);
+    body.set(head, 0); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
+    const r = await api(UPLOAD + '?uploadType=multipart&fields=id', {
+      method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body
+    });
+    return (await r.json()).id;
+  }
+  async function downloadBytes(id) {
+    const r = await api(API + '/' + encodeURIComponent(id) + '?alt=media');
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  async function remove(id) {
+    try { await api(API + '/' + encodeURIComponent(id), { method: 'DELETE' }); }
+    catch (e) { if (e.status !== 404) throw e; }
+  }
+
+  root.Drive = { prepare, isReady, hasToken, signIn, signOut, findFile, download, upload, listImages, uploadBytes, downloadBytes, remove };
 })(self);

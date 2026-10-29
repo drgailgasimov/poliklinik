@@ -86,16 +86,16 @@
      Visit = { id, tarih, sikayet, muayene, tani, icd, tedaviUygulanan, tedaviPlanlanan, plan, kontrol, onemliNot, createdAt, updatedAt, deleted? }
      Kimlik alanları hasta düzeyinde, vizitler kendi düzeyinde "son yazan kazanır" ile birleşir.
      Silinen kayıtlardan kişisel veri temizlenir; yalnızca kimliği ve silinme zamanı kalır. */
-  function emptyDB() { return { schema: 1, patients: {} }; }
+  function emptyDB() { return { schema: 1, patients: {}, keys: {} }; }
 
   function normalizeDB(db) {
     if (!db || typeof db !== 'object') return emptyDB();
-    const out = { schema: 1, patients: {} };
+    const out = { schema: 1, patients: {}, keys: Object.assign({}, db.keys || {}) };
     const src = db.patients || {};
     for (const id of Object.keys(src)) {
       const p = src[id];
       if (!p || !p.id) continue;
-      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}) });
+      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}), images: Object.assign({}, p.images || {}) });
     }
     return out;
   }
@@ -108,25 +108,37 @@
     if (tb < ta) return a;
     return b.deleted && !a.deleted ? b : a;
   }
-  function scrubPatient(p) { return { id: p.id, deleted: true, updatedAt: p.updatedAt || Date.now(), visits: {} }; }
+  /* Silinen hastanın görüntü kimlikleri tutulur ki her cihaz şifreli görüntü dosyalarını da silebilsin. */
+  function scrubPatient(p, imgs) {
+    const images = {};
+    for (const id of Object.keys(imgs || {})) images[id] = { id, deleted: true, updatedAt: p.updatedAt || Date.now() };
+    return { id: p.id, deleted: true, updatedAt: p.updatedAt || Date.now(), visits: {}, images };
+  }
   function scrubVisit(v) { return { id: v.id, deleted: true, updatedAt: v.updatedAt || Date.now() }; }
+  function mergeMap(ma, mb) {
+    ma = ma || {}; mb = mb || {};
+    const out = {};
+    for (const id of new Set(Object.keys(ma).concat(Object.keys(mb)))) {
+      const w = lww(ma[id], mb[id]);
+      out[id] = w.deleted ? scrubVisit(w) : Object.assign({}, w);
+    }
+    return out;
+  }
 
   function mergeDB(a, b) {
     a = normalizeDB(a); b = normalizeDB(b);
     const out = emptyDB();
+    // Görüntü anahtarları hiçbir zaman silinmez; iki cihazınkiler birleştirilir.
+    out.keys = Object.assign({}, b.keys, a.keys);
     const ids = new Set(Object.keys(a.patients).concat(Object.keys(b.patients)));
     for (const id of ids) {
       const pa = a.patients[id], pb = b.patients[id];
       const top = lww(pa, pb);
-      if (top.deleted) { out.patients[id] = scrubPatient(top); continue; }
-      const va = (pa && pa.visits) || {}, vb = (pb && pb.visits) || {};
-      const visits = {};
-      for (const vid of new Set(Object.keys(va).concat(Object.keys(vb)))) {
-        const w = lww(va[vid], vb[vid]);
-        visits[vid] = w.deleted ? scrubVisit(w) : Object.assign({}, w);
-      }
+      const images = mergeMap(pa && pa.images, pb && pb.images);
+      if (top.deleted) { out.patients[id] = scrubPatient(top, images); continue; }
       const p = Object.assign({}, top);
-      p.visits = visits;
+      p.visits = mergeMap(pa && pa.visits, pb && pb.visits);
+      p.images = images;
       out.patients[id] = p;
     }
     return out;
@@ -174,7 +186,38 @@
       .replace(/[̀-ͯ]/g, '');
   }
 
-  const PK = { APP_ID, ITER, b64, unb64, newSalt, deriveKey, seal, open, isVault, Keyring, emptyDB, normalizeDB, mergeDB, tcValid, normPhone, fmtPhone, maskTC, fold };
+  /* ---------- görüntüler için veri anahtarı (parola değişse de aynı kalır) ---------- */
+  function newDataKey() { return b64(randomBytes(32)); }
+  const dkCache = new Map();
+  function importDataKey(k64) {
+    if (!dkCache.has(k64)) dkCache.set(k64, cryptoObj().subtle.importKey('raw', unb64(k64), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']));
+    return dkCache.get(k64);
+  }
+  function clearDataKeys() { dkCache.clear(); }
+  const IMG_AAD = enc.encode(APP_ID + ':img:v1');
+  /* Biçim: "PKI1" (4 bayt) + iv (12 bayt) + şifreli veri.  İçerik: başlık uzunluğu (4 bayt) + JSON başlık + dosya baytları */
+  async function sealBytes(k64, header, bytes) {
+    const key = await importDataKey(k64);
+    const h = enc.encode(JSON.stringify(header || {}));
+    const plain = new Uint8Array(4 + h.length + bytes.length);
+    new DataView(plain.buffer).setUint32(0, h.length);
+    plain.set(h, 4); plain.set(bytes, 4 + h.length);
+    const iv = randomBytes(12);
+    const ct = new Uint8Array(await cryptoObj().subtle.encrypt({ name: 'AES-GCM', iv, additionalData: IMG_AAD }, key, plain));
+    const out = new Uint8Array(16 + ct.length);
+    out.set(enc.encode('PKI1'), 0); out.set(iv, 4); out.set(ct, 16);
+    return out;
+  }
+  async function openBytes(k64, blob) {
+    const u = blob instanceof Uint8Array ? blob : new Uint8Array(blob);
+    if (dec.decode(u.subarray(0, 4)) !== 'PKI1') throw new Error('Görüntü dosyası tanınmadı.');
+    const key = await importDataKey(k64);
+    const plain = new Uint8Array(await cryptoObj().subtle.decrypt({ name: 'AES-GCM', iv: u.subarray(4, 16), additionalData: IMG_AAD }, key, u.subarray(16)));
+    const hl = new DataView(plain.buffer).getUint32(0);
+    return { header: JSON.parse(dec.decode(plain.subarray(4, 4 + hl))), bytes: plain.subarray(4 + hl) };
+  }
+
+  const PK = { APP_ID, ITER, b64, unb64, newSalt, deriveKey, seal, open, isVault, Keyring, emptyDB, normalizeDB, mergeDB, newDataKey, sealBytes, openBytes, clearDataKeys, tcValid, normPhone, fmtPhone, maskTC, fold };
   if (typeof module !== 'undefined' && module.exports) module.exports = PK;
   else root.PK = PK;
 })(typeof self !== 'undefined' ? self : globalThis);

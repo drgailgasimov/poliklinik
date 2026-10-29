@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.2.0';
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
   const $dlg = document.getElementById('dlg');
@@ -32,7 +32,12 @@
     pendingDriveFileId: null,
     saveChain: Promise.resolve(),
     ignoreHash: false,
-    currentHash: ''
+    currentHash: '',
+    xl: { range: 'month', from: '', to: '', ids: true },
+    imgUrls: new Map(),
+    adv: { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false },
+    advTimer: null,
+    imgBusy: false
   };
 
   const DEFAULT_SETTINGS = { lockMinutes: 5, autoSyncOnUnlock: true, clientId: '', driveConnected: false, driveFileId: '', lastSync: 0, lastBackup: 0 };
@@ -60,7 +65,9 @@
     return {
       get: (k) => run('readonly', (s) => s.get(k)),
       set: (k, v) => run('readwrite', (s) => s.put(v, k)),
-      del: (k) => run('readwrite', (s) => s.delete(k))
+      del: (k) => run('readwrite', (s) => s.delete(k)),
+      keys: () => run('readonly', (s) => s.getAllKeys()),
+      clear: () => run('readwrite', (s) => s.clear())
     };
   })();
 
@@ -105,6 +112,7 @@
     phone: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
     gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     lock: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+    sliders: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
     search: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     plus: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>'
@@ -139,6 +147,7 @@
     const p = x.p;
     const parts = [p.ad, p.soyad, p.tc, p.tel, PK.normPhone(p.tel)];
     for (const v of x.vs) for (const f of VISIT_FIELDS) parts.push(v[f]);
+    for (const im of liveImages(p)) parts.push(im.note);
     return PK.fold(parts.join(' '));
   }
 
@@ -229,6 +238,7 @@
       if (!S.unlocked) return;
       const vault = await currentVault();
       S.settings.driveFileId = await Drive.upload(fileId, vault);
+      await syncImages();
       S.settings.lastSync = Date.now();
       S.settings.driveConnected = true;
       S.prevKeyring = null;
@@ -258,6 +268,237 @@
     Drive.signIn(!S.settings.driveConnected).then(run).catch((e) => { setSync('error', e.message); toast(e.message, true); });
   }
 
+  /* ================= görüntüler ================= */
+  const MAX_FILE = 40 * 1024 * 1024;
+  const MAX_EDGE = 2048, THUMB_EDGE = 360;
+  function liveImages(p) {
+    return Object.values((p && p.images) || {}).filter((m) => !m.deleted).sort((a, b) => (b.takenAt || b.createdAt || 0) - (a.takenAt || a.createdAt || 0));
+  }
+  const imgName = (id) => 'img-' + id + '.pki';
+  function isHeic(file) { return /hei[cf]/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || ''); }
+  function guessMime(file) {
+    if (file.type) return file.type;
+    const ext = (/\.([a-z0-9]+)$/i.exec(file.name || '') || [])[1] || '';
+    return ({ heic: 'image/heic', heif: 'image/heif', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', bmp: 'image/bmp' })[ext.toLowerCase()] || 'application/octet-stream';
+  }
+  async function decodeImage(file) {
+    if (window.createImageBitmap) {
+      try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { /* aşağıda dene */ }
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return img;
+    } catch (e) { return null; }
+    finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  }
+  function drawTo(src, maxEdge) {
+    const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight;
+    const k = Math.min(1, maxEdge / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, 0, 0, w, h);
+    return c;
+  }
+  const canvasBytes = (c, type, q) => new Promise((res, rej) => c.toBlob((b) => b ? b.arrayBuffer().then((a) => res(new Uint8Array(a)), rej) : rej(new Error('Görüntü kodlanamadı.')), type, q));
+
+  /* Görüntü yeniden kodlanır: boyut küçülür, konum (GPS) gibi gizli bilgiler silinir. */
+  async function prepareImage(file) {
+    if (file.size > MAX_FILE) throw new Error((file.name || 'Dosya') + ' 40 MB\'tan büyük.');
+    const mime = guessMime(file);
+    const src = await decodeImage(file);
+    if (!src) {
+      if (!/^image\//.test(mime) && !isHeic(file)) throw new Error((file.name || 'Dosya') + ' bir görüntü dosyası değil.');
+      return { full: new Uint8Array(await file.arrayBuffer()), thumb: new Uint8Array(0), mime, w: 0, h: 0, viewable: false };
+    }
+    const keepPng = mime === 'image/png' && file.size < 4 * 1024 * 1024;
+    const big = drawTo(src, MAX_EDGE);
+    const full = await canvasBytes(big, keepPng ? 'image/png' : 'image/jpeg', 0.86);
+    const thumb = await canvasBytes(drawTo(big, THUMB_EDGE), 'image/jpeg', 0.78);
+    if (src.close) src.close();
+    return { full, thumb, mime: keepPng ? 'image/png' : 'image/jpeg', w: big.width, h: big.height, viewable: true };
+  }
+  async function ensureDataKey() {
+    const ids = Object.keys(S.db.keys || {}).sort();
+    if (ids.length) return ids[0];
+    const kid = uid();
+    S.db.keys = Object.assign({}, S.db.keys, { [kid]: PK.newDataKey() });
+    return kid;
+  }
+  async function addImages(pid, files, note) {
+    const p = getPatient(pid);
+    if (!p || !files.length) return 0;
+    const kid = await ensureDataKey();
+    let n = 0;
+    const errs = [];
+    for (const file of files) {
+      try {
+        const im = await prepareImage(file);
+        const id = uid();
+        const payload = new Uint8Array(im.thumb.length + im.full.length);
+        payload.set(im.thumb, 0); payload.set(im.full, im.thumb.length);
+        const sealed = await PK.sealBytes(S.db.keys[kid], { v: 1, mime: im.mime, thumbLen: im.thumb.length }, payload);
+        await idb.set('img:' + id, sealed);
+        const now = Date.now();
+        const cur = getPatient(pid);
+        cur.images = Object.assign({}, cur.images, { [id]: {
+          id, keyId: kid, mime: im.mime, origType: guessMime(file), w: im.w, h: im.h, size: im.full.length, viewable: im.viewable,
+          note: trim(note), takenAt: file.lastModified || now, createdAt: now, updatedAt: now
+        } });
+        n++;
+      } catch (e) { errs.push(e.message); }
+    }
+    if (n) await markChanged();
+    if (errs.length) toast(errs[0], true);
+    return n;
+  }
+  async function readImage(meta) {
+    const blob = await idb.get('img:' + meta.id);
+    if (!blob) return null;
+    const key = S.db.keys && S.db.keys[meta.keyId];
+    if (!key) throw new Error('Görüntü anahtarı bulunamadı. Eşitle\'ye dokunun.');
+    const o = await PK.openBytes(key, blob);
+    const tl = o.header.thumbLen || 0;
+    return { mime: o.header.mime, thumb: o.bytes.subarray(0, tl), full: o.bytes.subarray(tl) };
+  }
+  async function imageUrls(meta) {
+    if (S.imgUrls.has(meta.id)) return S.imgUrls.get(meta.id);
+    const r = await readImage(meta);
+    if (!r) return null;
+    const u = {
+      thumb: r.thumb.length ? URL.createObjectURL(new Blob([r.thumb], { type: 'image/jpeg' })) : '',
+      full: URL.createObjectURL(new Blob([r.full], { type: r.mime })),
+      mime: r.mime
+    };
+    S.imgUrls.set(meta.id, u);
+    return u;
+  }
+  function revokeImageUrls() {
+    for (const u of S.imgUrls.values()) { if (u.thumb) URL.revokeObjectURL(u.thumb); URL.revokeObjectURL(u.full); }
+    S.imgUrls.clear();
+  }
+  async function hydrateThumbs() {
+    const tiles = document.querySelectorAll('.img-tile[data-iid]');
+    for (const t of tiles) {
+      const p = getPatient(t.dataset.pid);
+      const m = p && p.images && p.images[t.dataset.iid];
+      if (!m || m.deleted) continue;
+      try {
+        const u = await imageUrls(m);
+        const box = t.querySelector('.img-box');
+        if (!box) continue;
+        if (!u) { box.innerHTML = '<span class="img-ph">Drive\'dan bekleniyor</span>'; continue; }
+        if (m.viewable && u.thumb) box.innerHTML = '<img src="' + u.thumb + '" alt="">';
+        else box.innerHTML = '<span class="img-ph">' + esc(fmtLabel(m)) + '<br>indirip açın</span>';
+      } catch (e) {
+        const box = t.querySelector('.img-box');
+        if (box) box.innerHTML = '<span class="img-ph">Açılamadı</span>';
+      }
+    }
+  }
+  function fmtLabel(m) {
+    if (/hei[cf]/i.test(m.origType || m.mime || '')) return 'HEIC';
+    const t = (m.origType || m.mime || '').split('/')[1] || 'dosya';
+    return t.replace('jpeg', 'JPEG').toUpperCase();
+  }
+  function imgExt(mime) { return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/heif': 'heif', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/bmp': 'bmp' })[mime] || 'bin'; }
+
+  function imagesSection(p) {
+    const ims = liveImages(p);
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const tiles = ims.map((m) =>
+      '<li><button class="img-tile" type="button" data-act="openImage" data-pid="' + esc(p.id) + '" data-iid="' + esc(m.id) + '" aria-label="Görüntüyü aç' + (m.note ? ': ' + esc(m.note) : '') + '">' +
+      '<span class="img-box"><span class="img-ph">Yükleniyor…</span></span>' +
+      '<span class="img-cap"><b>' + esc(m.note || 'Açıklama yok') + '</b><span>' + esc(fFull.format(m.takenAt || m.createdAt)) + '</span></span></button></li>').join('');
+    return '<section class="images" aria-labelledby="imgH">' +
+      '<div class="visits-h"><h3 id="imgH">Görüntüler' + (ims.length ? ' <span class="count">' + ims.length + '</span>' : '') + '</h3>' +
+      '<div class="img-actions">' +
+        (coarse ? '<label class="btn ghost">Fotoğraf çek<input type="file" accept="image/*" capture="environment" data-change="addImages" data-id="' + esc(p.id) + '" hidden></label>' : '') +
+        '<label class="btn ghost">Görüntü ekle<input type="file" accept="image/*,.heic,.heif" multiple data-change="addImages" data-id="' + esc(p.id) + '" hidden></label>' +
+      '</div></div>' +
+      (tiles ? '<ul class="img-grid">' + tiles + '</ul>' : '<p class="muted small">Röntgen, MR görüntüsü, yara fotoğrafı ya da belge ekleyebilirsiniz. JPEG, PNG, HEIC, WebP, GIF ve AVIF desteklenir.</p>') +
+      '</section>';
+  }
+
+  async function openImageViewer(pid, iid) {
+    const p = getPatient(pid);
+    const m = p && p.images && p.images[iid];
+    if (!m || m.deleted) return;
+    let u = null, err = '';
+    try { u = await imageUrls(m); } catch (e) { err = e.message; }
+    const body = err ? '<p class="notice alert">' + esc(err) + '</p>'
+      : !u ? '<p class="notice">Bu görüntü henüz bu cihaza inmedi. Üstteki Eşitle düğmesine dokunun.</p>'
+      : m.viewable ? '<div class="viewer-img"><img src="' + u.full + '" alt="' + esc(m.note || 'Hasta görüntüsü') + '"></div>'
+      : '<p class="notice">' + esc(fmtLabel(m)) + ' biçimi bu tarayıcıda gösterilemiyor. “İndir” ile kaydedip telefonun galerisinde açın.</p>';
+    $dlg.classList.add('viewer');
+    $dlg.innerHTML = '<form method="dialog" data-viewer>' +
+      '<div class="viewer-h"><h3>' + esc(fullName(p)) + '</h3><button class="icon-btn" type="button" data-v="close" aria-label="Kapat">✕</button></div>' + body +
+      '<p class="small muted">' + esc(fFull.format(m.takenAt || m.createdAt)) + (m.w ? ', ' + m.w + '×' + m.h + ' piksel' : '') + ', ' + Math.max(1, Math.round((m.size || 0) / 1024)) + ' KB</p>' +
+      '<label class="field"><span>Açıklama</span><input name="note" value="' + esc(m.note || '') + '" placeholder="Örn. Sağ diz AP grafi" autocomplete="off"></label>' +
+      '<div class="acts viewer-acts"><button class="btn danger" type="button" data-v="delete">Sil</button><span class="spacer"></span>' +
+      (u ? '<button class="btn ghost" type="button" data-v="download">İndir</button>' : '') +
+      '<button class="btn primary" type="submit">Açıklamayı kaydet</button></div></form>';
+    const form = $dlg.querySelector('form');
+    const close = () => { $dlg.close(); };
+    $dlg.addEventListener('close', () => { $dlg.classList.remove('viewer'); }, { once: true });
+    form.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      if (b.dataset.v === 'close') close();
+      if (b.dataset.v === 'download' && u) {
+        const a = document.createElement('a');
+        a.href = u.full; a.download = 'goruntu-' + todayISO() + '.' + imgExt(u.mime);
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+      if (b.dataset.v === 'delete') {
+        if (!confirm('Bu görüntü kalıcı olarak silinsin mi? Eşitlemeden sonra diğer cihazdan da silinir.')) return;
+        const cur = getPatient(pid);
+        cur.images = Object.assign({}, cur.images, { [iid]: { id: iid, deleted: true, updatedAt: Date.now() } });
+        const uu = S.imgUrls.get(iid); if (uu) { if (uu.thumb) URL.revokeObjectURL(uu.thumb); URL.revokeObjectURL(uu.full); S.imgUrls.delete(iid); }
+        await idb.del('img:' + iid);
+        await markChanged();
+        close(); renderMain(); toast('Görüntü silindi.');
+      }
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const cur = getPatient(pid);
+      const mm = cur && cur.images[iid];
+      if (!mm) return close();
+      cur.images = Object.assign({}, cur.images, { [iid]: Object.assign({}, mm, { note: trim(form.note.value), updatedAt: Date.now() }) });
+      await markChanged();
+      close(); renderMain(); toast('Açıklama kaydedildi.');
+    });
+    $dlg.showModal();
+  }
+
+  /* Drive'daki görüntü dosyalarını eşitler: eksikleri yükler, indirir; silinenleri kaldırır. */
+  async function syncImages() {
+    const metas = [];
+    for (const p of Object.values(S.db.patients)) for (const m of Object.values(p.images || {})) metas.push({ m, live: !p.deleted && !m.deleted });
+    if (!metas.length) return;
+    const remote = await Drive.listImages();
+    const local = new Set(((await idb.keys()) || []).filter((k) => typeof k === 'string' && k.startsWith('img:')).map((k) => k.slice(4)));
+    let downloaded = 0;
+    for (const { m, live } of metas) {
+      if (!S.unlocked) return;
+      const name = imgName(m.id);
+      if (!live) {
+        if (remote.has(name)) await Drive.remove(remote.get(name));
+        if (local.has(m.id)) await idb.del('img:' + m.id);
+        continue;
+      }
+      if (local.has(m.id) && !remote.has(name)) await Drive.uploadBytes(name, await idb.get('img:' + m.id));
+      else if (!local.has(m.id) && remote.has(name)) { await idb.set('img:' + m.id, await Drive.downloadBytes(remote.get(name))); downloaded++; }
+    }
+    if (downloaded && !S.form) renderMain();
+  }
+
   /* ================= kilit ================= */
   function lock(msg) {
     if (!S.unlocked) return;
@@ -268,6 +509,7 @@
       if (S.prevKeyring) S.prevKeyring.wipe();
       S.keyring = null; S.prevKeyring = null; S.db = null; S.form = null; S.unlocked = false;
       S.reveal.clear(); S.query = '';
+      revokeImageUrls(); PK.clearDataKeys();
       clearTimeout(S.syncTimer);
       S.ignoreHash = true; location.hash = '#/'; S.currentHash = '#/';
       setTimeout(() => { S.ignoreHash = false; }, 0);
@@ -411,6 +653,7 @@
           '<div class="list-head">' +
             '<div class="list-head-row">' +
               '<label class="search">' + IC.search + '<input type="search" id="q" placeholder="İsim, TC, telefon, tanı ara" aria-label="Hasta ara" autocomplete="off" spellcheck="false"></label>' +
+              '<a class="btn ghost adv-btn" href="#/arama" title="Detaylı arama (Alt+F)" aria-label="Detaylı arama">' + IC.sliders + '</a>' +
               '<a class="btn primary new-desk" href="#/yeni" title="Yeni hasta (Alt+N)">' + IC.plus + 'Yeni</a>' +
             '</div>' +
             '<div class="filters" id="filters" role="group" aria-label="Filtre"></div>' +
@@ -435,6 +678,7 @@
     if (!parts.length) return { name: 'home' };
     if (parts[0] === 'yeni') return { name: 'newPatient' };
     if (parts[0] === 'ayarlar') return { name: 'settings' };
+    if (parts[0] === 'arama') return { name: 'search' };
     if (parts[0] === 'h' && parts[1]) {
       if (parts[2] === 'vizit' && parts[3]) return { name: 'editVisit', id: parts[1], vid: parts[3] };
       if (parts[2] === 'vizit') return { name: 'newVisit', id: parts[1] };
@@ -537,7 +781,7 @@
     switch (r.name) {
       case 'home':
         view = 'list';
-        html = '<div class="empty"><h3>Hasta seçin</h3><p>Soldaki listeden bir hasta seçin ya da yeni hasta ekleyin.</p><p class="kbd">Kısayollar: Alt+N yeni hasta, / arama, Ctrl+Enter kaydet</p></div>';
+        html = '<div class="empty"><h3>Hasta seçin</h3><p>Soldaki listeden bir hasta seçin ya da yeni hasta ekleyin.</p><p class="kbd">Kısayollar: Alt+N yeni hasta, / hızlı arama, Alt+F detaylı arama, Ctrl+Enter kaydet</p></div>';
         document.title = 'Poliklinik Defteri';
         break;
       case 'patient': {
@@ -562,10 +806,13 @@
         view = 'form'; html = formView(ensureForm('editPatient', r.id, null)); break;
       }
       case 'settings': view = 'settings'; html = settingsView(); document.title = 'Ayarlar · Poliklinik Defteri'; break;
+      case 'search': view = 'search'; html = advView(); document.title = 'Detaylı arama · Poliklinik Defteri'; break;
     }
     $p.dataset.view = view;
     $m.innerHTML = '<div class="main-inner">' + html + '</div>';
     if (view === 'form') afterFormRender();
+    if (r.name === 'patient') hydrateThumbs();
+    if (r.name === 'search') advRender();
   }
   function notFound() {
     return '<div class="empty"><h3>Kayıt bulunamadı</h3><p>Bu kayıt silinmiş olabilir.</p><p><a class="btn ghost" href="#/">Listeye dön</a></p></div>';
@@ -598,6 +845,7 @@
         '</div>' +
       '</header>' +
       (x.note ? '<aside class="alert-box"><h4>Önemli not</h4><p>' + esc(x.note) + '</p></aside>' : '') +
+      imagesSection(p) +
       '<div class="visits-h"><h3>Vizitler</h3></div>' +
       (visits ? '<ol class="visits">' + visits + '</ol>' : '<div class="empty"><p>Bu hastaya ait vizit yok.</p></div>') +
       '</article>';
@@ -796,6 +1044,278 @@
     go('#/h/' + pid);
   }
 
+  /* ---------- Excel'e aktarma ---------- */
+  const XL_RANGES = [['month', 'Bu ay'], ['lastMonth', 'Geçen ay'], ['year', 'Bu yıl'], ['all', 'Tüm kayıtlar'], ['custom', 'Tarih aralığı seç']];
+  function xlBounds() {
+    const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+    switch (S.xl.range) {
+      case 'month': return [new Date(y, m, 1).getTime(), new Date(y, m + 1, 1).getTime()];
+      case 'lastMonth': return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()];
+      case 'year': return [new Date(y, 0, 1).getTime(), new Date(y + 1, 0, 1).getTime()];
+      case 'custom': {
+        const a = S.xl.from ? new Date(S.xl.from + 'T00:00:00').getTime() : -Infinity;
+        const b = S.xl.to ? new Date(S.xl.to + 'T00:00:00').getTime() + 86400000 : Infinity;
+        return [a, b];
+      }
+      default: return [-Infinity, Infinity];
+    }
+  }
+  function xlSelection() {
+    const [a, b] = xlBounds();
+    const out = [];
+    for (const x of livePatients()) {
+      const vs = x.vs.filter((v) => v.tarih >= a && v.tarih < b);
+      if (vs.length) out.push({ x, vs: vs.slice().sort((p, q) => p.tarih - q.tarih) });
+    }
+    return out;
+  }
+  function xlRangeLabel() {
+    const fmt = (t) => new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(t);
+    if (S.xl.range === 'all') return 'Tüm kayıtlar';
+    if (S.xl.range === 'custom') {
+      if (!S.xl.from && !S.xl.to) return 'Tüm kayıtlar';
+      return (S.xl.from ? fmt(new Date(S.xl.from + 'T00:00:00')) : 'Başlangıç') + ' – ' + (S.xl.to ? fmt(new Date(S.xl.to + 'T00:00:00')) : 'bugün');
+    }
+    const [a, b] = xlBounds();
+    return fmt(a) + ' – ' + fmt(b - 86400000);
+  }
+  function xlSummaryText() {
+    const sel = xlSelection();
+    const nv = sel.reduce((s, p) => s + p.vs.length, 0);
+    return nv ? xlRangeLabel() + ': ' + sel.length + ' hasta, ' + nv + ' vizit.' : xlRangeLabel() + ': bu aralıkta vizit yok.';
+  }
+  function excelSection() {
+    const o = XL_RANGES.map(([v, t]) => '<option value="' + v + '"' + (S.xl.range === v ? ' selected' : '') + '>' + t + '</option>').join('');
+    return '<section class="set"><h3>Excel\'e aktar</h3>' +
+      '<p class="muted">Kayıtları liste hâlinde Excel dosyası olarak indirir. Dosyada iki sayfa olur: her vizitin bir satır olduğu “Vizitler” ve her hastanın bir satır olduğu “Hastalar”.</p>' +
+      '<div class="grid2"><label class="field"><span>Aralık</span><select data-change="xlRange">' + o + '</select></label><span></span>' +
+      '<label class="field"' + (S.xl.range === 'custom' ? '' : ' hidden') + ' id="xlFromF"><span>Başlangıç</span><input type="date" data-change="xlFrom" value="' + esc(S.xl.from) + '"></label>' +
+      '<label class="field"' + (S.xl.range === 'custom' ? '' : ' hidden') + ' id="xlToF"><span>Bitiş</span><input type="date" data-change="xlTo" value="' + esc(S.xl.to) + '"></label></div>' +
+      '<label class="check"><input type="checkbox" data-change="xlIds"' + (S.xl.ids ? ' checked' : '') + '>TC kimlik no ve telefonu dahil et</label>' +
+      '<p class="small" id="xlSummary">' + esc(xlSummaryText()) + '</p>' +
+      '<p class="notice alert small">Excel dosyası şifresizdir. Hastane dışına göndermeyin, e-postayla paylaşmayın; işiniz bitince silin.</p>' +
+      '<div class="row-btns"><button class="btn primary" type="button" data-act="exportExcel">Excel dosyasını indir</button></div>' +
+      '</section>';
+  }
+  function refreshXl() {
+    const f = document.getElementById('xlFromF'), t = document.getElementById('xlToF'), s = document.getElementById('xlSummary');
+    if (f) f.hidden = S.xl.range !== 'custom';
+    if (t) t.hidden = S.xl.range !== 'custom';
+    if (s) s.textContent = xlSummaryText();
+  }
+  async function loadLogo() {
+    try {
+      const r = await fetch('icons/logo-amblem.png');
+      if (!r.ok) return null;
+      const png = new Uint8Array(await r.arrayBuffer());
+      const dv = new DataView(png.buffer);
+      const w = dv.getUint32(16), h = dv.getUint32(20);
+      const H = 62;
+      return { png, w: Math.round(H * w / h), h: H };
+    } catch (e) { return null; }
+  }
+  async function exportExcel(selOverride, rangeOverride) {
+    const sel = selOverride || xlSelection();
+    const nv = sel.reduce((s, p) => s + p.vs.length, 0);
+    if (!nv) { toast('Seçilen aralıkta vizit yok.', true); return; }
+    const ids = S.xl.ids;
+    const now = Date.now();
+    const stamp = new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(now);
+    const letterhead = ['Op. Dr. Gail Gasimov', 'Ortopedi ve Travmatoloji Uzmanı, Liv Hospital Vadistanbul', '+90 535 393 43 22   info@drgailgasimov.com   drgailgasimov.com'];
+
+    const vCols = [{ header: 'Vizit tarihi', width: 17, type: 'datetime' }, { header: 'Ad', width: 14 }, { header: 'Soyad', width: 16 }]
+      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }] : [])
+      .concat([
+        { header: 'Şikayet', width: 34, type: 'wrap' }, { header: 'Muayene bulgusu', width: 34, type: 'wrap' },
+        { header: 'Tanı', width: 30, type: 'wrap' }, { header: 'ICD-10', width: 9 },
+        { header: 'Uygulanan tedavi', width: 30, type: 'wrap' }, { header: 'Uygulanacak tedavi', width: 30, type: 'wrap' },
+        { header: 'Plan', width: 30, type: 'wrap' }, { header: 'Kontrol tarihi', width: 13, type: 'date' },
+        { header: 'Önemli not', width: 30, type: 'alert' }
+      ]);
+    const vRows = [];
+    for (const { x, vs } of sel) for (const v of vs) {
+      vRows.push([v.tarih, x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel)] : [])
+        .concat([v.sikayet, v.muayene, v.tani, v.icd, v.tedaviUygulanan, v.tedaviPlanlanan, v.plan, v.kontrol || '', v.onemliNot]));
+    }
+    vRows.sort((a, b) => a[0] - b[0]);
+
+    const pCols = [{ header: 'Ad', width: 14 }, { header: 'Soyad', width: 16 }]
+      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }] : [])
+      .concat([
+        { header: 'İlk vizit', width: 17, type: 'datetime' }, { header: 'Son vizit', width: 17, type: 'datetime' },
+        { header: 'Vizit sayısı', width: 10, type: 'number' }, { header: 'Son tanı', width: 34, type: 'wrap' },
+        { header: 'Son kontrol tarihi', width: 15, type: 'date' }, { header: 'Görüntü sayısı', width: 10, type: 'number' },
+        { header: 'Önemli not', width: 34, type: 'alert' }
+      ]);
+    const coll = new Intl.Collator('tr-TR');
+    const pRows = sel.slice().sort((a, b) => coll.compare(a.x.p.soyad || '', b.x.p.soyad || '') || coll.compare(a.x.p.ad || '', b.x.p.ad || ''))
+      .map(({ x, vs }) => {
+        const lastTani = (vs.slice().reverse().find((v) => trim(v.tani)) || {}).tani || '';
+        let k = ''; for (const v of vs) if (v.kontrol && v.kontrol > k) k = v.kontrol;
+        return [x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel)] : [])
+          .concat([vs[0].tarih, vs[vs.length - 1].tarih, vs.length, lastTani, k, liveImages(x.p).length, x.note]);
+      });
+
+    const range = rangeOverride || xlRangeLabel();
+    const bytes = XLSXW.build([
+      { name: 'Vizitler', letterhead, caption: 'Poliklinik Defteri, vizit listesi. Aralık: ' + range + '. ' + vRows.length + ' vizit. Oluşturulma: ' + stamp + '.', columns: vCols, rows: vRows },
+      { name: 'Hastalar', letterhead, caption: 'Poliklinik Defteri, hasta listesi. Aralık: ' + range + '. ' + pRows.length + ' hasta. Oluşturulma: ' + stamp + '.', columns: pCols, rows: pRows }
+    ], { logo: await loadLogo(), title: 'Poliklinik Defteri', author: 'Op. Dr. Gail Gasimov' });
+
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'poliklinik-defteri-' + todayISO() + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('Excel dosyası indirildi: ' + pRows.length + ' hasta, ' + vRows.length + ' vizit.');
+  }
+
+  /* ---------- detaylı arama ---------- */
+  const ADV_VISIT = ['tani', 'icd', 'sikayet', 'muayene', 'tedavi', 'plan', 'not', 'from', 'to'];
+  /* "a b, c" → (a VE b) VEYA c */
+  function qGroups(q) {
+    return String(q || '').split(',').map((g) => PK.fold(g).split(/\s+/).filter(Boolean)).filter((g) => g.length);
+  }
+  function qMatch(text, groups) {
+    if (!groups.length) return true;
+    const t = PK.fold(text);
+    return groups.some((g) => g.every((w) => t.includes(w)));
+  }
+  function advActive() {
+    const a = S.adv;
+    return ['kisi', 'tani', 'icd', 'sikayet', 'muayene', 'tedavi', 'plan', 'not', 'from', 'to', 'kontrol'].some((k) => trim(a[k])) || a.gorsel;
+  }
+  function advRun() {
+    const a = S.adv;
+    const G = {};
+    for (const k of ['kisi', 'tani', 'sikayet', 'muayene', 'tedavi', 'plan', 'not']) G[k] = qGroups(a[k]);
+    const icds = String(a.icd || '').split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const from = a.from ? new Date(a.from + 'T00:00:00').getTime() : -Infinity;
+    const to = a.to ? new Date(a.to + 'T00:00:00').getTime() + 86400000 : Infinity;
+    const visitCrit = ADV_VISIT.some((k) => trim(a[k]));
+    const t0 = startOfDay(Date.now());
+    const out = [];
+    for (const x of livePatients()) {
+      const p = x.p;
+      if (G.kisi.length && !qMatch([p.ad, p.soyad, p.tc, p.tel, PK.normPhone(p.tel)].join(' '), G.kisi)) continue;
+      if (a.gorsel && !liveImages(p).length) continue;
+      if (a.kontrol) {
+        const k = kontrolTs(x.kontrol);
+        if (!x.kontrol) continue;
+        // Kontrolü veren vizitten sonra yeni bir vizit varsa hasta gelmiş sayılır.
+        const src = x.vs.find((v) => v.kontrol === x.kontrol) || x.vs[0];
+        const came = x.vs.some((v) => v.tarih > src.tarih);
+        if (a.kontrol === 'yaklasan' && !(k >= t0 && k < t0 + 31 * 86400000)) continue;
+        if (a.kontrol === 'gecmis' && !(k < t0 && !came)) continue;
+      }
+      let vs = x.vs;
+      if (visitCrit) {
+        vs = x.vs.filter((v) => {
+          if (v.tarih < from || v.tarih >= to) return false;
+          if (!qMatch(v.tani + ' ' + v.icd, G.tani)) return false;
+          if (icds.length && !icds.some((c) => String(v.icd || '').toUpperCase().startsWith(c))) return false;
+          if (!qMatch(v.sikayet, G.sikayet) || !qMatch(v.muayene, G.muayene) || !qMatch(v.plan, G.plan) || !qMatch(v.onemliNot, G.not)) return false;
+          if (G.tedavi.length) {
+            const tt = a.tedaviTur === 'uygulanan' ? v.tedaviUygulanan : a.tedaviTur === 'planlanan' ? v.tedaviPlanlanan : (v.tedaviUygulanan || '') + ' ' + (v.tedaviPlanlanan || '');
+            if (!qMatch(tt, G.tedavi)) return false;
+          }
+          return true;
+        });
+        if (!vs.length) continue;
+      }
+      out.push({ x, vs });
+    }
+    out.sort((p, q) => ((q.vs[0] || {}).tarih || q.x.lastTime) - ((p.vs[0] || {}).tarih || p.x.lastTime));
+    return out;
+  }
+  /* Defterdeki en sık değerler: öneri çipleri ve otomatik tamamlama için */
+  function topValues(fields, n) {
+    const cnt = new Map();
+    for (const x of livePatients()) for (const v of x.vs) for (const f of fields) {
+      const val = trim(v[f]);
+      if (!val || val.length > 80) continue;
+      const k = PK.fold(val);
+      const e = cnt.get(k) || { val, n: 0 };
+      e.n++; cnt.set(k, e);
+    }
+    return Array.from(cnt.values()).sort((a, b) => b.n - a.n || a.val.localeCompare(b.val, 'tr')).slice(0, n);
+  }
+  function chips(field, list) {
+    if (!list.length) return '';
+    return '<div class="chips" role="group" aria-label="Sık kullanılanlar">' + list.map((e) =>
+      '<button type="button" class="chip-btn" data-act="advChip" data-field="' + field + '" data-val="' + esc(e.val) + '">' + esc(e.val) + ' <em>' + e.n + '</em></button>').join('') + '</div>';
+  }
+  function datalist(id, list) {
+    return '<datalist id="' + id + '">' + list.map((e) => '<option value="' + esc(e.val) + '"></option>').join('') + '</datalist>';
+  }
+  function advView() {
+    const a = S.adv;
+    const f = (name, label, ph, extra) => '<label class="field"><span>' + label + '</span><input data-adv="' + name + '" value="' + esc(a[name]) + '" placeholder="' + esc(ph || '') + '" autocomplete="off" spellcheck="false"' + (extra || '') + '></label>';
+    const topTani = topValues(['tani'], 12), topIcd = topValues(['icd'], 10), topTed = topValues(['tedaviUygulanan', 'tedaviPlanlanan'], 12);
+    const sel = (name, opts) => '<select data-adv="' + name + '">' + opts.map(([v, t]) => '<option value="' + v + '"' + (a[name] === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>';
+    return '<button class="btn ghost back" type="button" data-act="back">' + IC.back + 'Liste</button>' +
+      '<h2 class="form-title">Detaylı arama</h2>' +
+      '<p class="form-sub">Doldurduğunuz tüm ölçütler birlikte aranır. Vizit ölçütleri aynı vizitte eşleşmelidir. Bir kutuda virgülle ayırdığınız ifadelerden herhangi biri yeterlidir: <b>menisküs, kondromalazi</b>.</p>' +
+      '<form class="adv" data-form="adv" autocomplete="off">' +
+      '<div class="card"><p class="card-h">Tanı</p><div class="grid2">' +
+        f('tani', 'Tanı içinde geçen', 'Örn. gonartroz, menisküs', ' list="dlTani"') +
+        f('icd', 'ICD-10 kodu (başı yeterli)', 'Örn. M17 veya M23.2, S83', ' list="dlIcd"') +
+      '</div>' + chips('tani', topTani) + chips('icd', topIcd) + '</div>' +
+      '<div class="card"><p class="card-h">Tedavi</p><div class="grid2">' +
+        f('tedavi', 'Tedavi içinde geçen', 'Örn. PRP, artroskopi, NSAİİ', ' list="dlTed"') +
+        '<label class="field"><span>Hangi tedavi alanında</span>' + sel('tedaviTur', [['all', 'Uygulanan ve uygulanacak'], ['uygulanan', 'Yalnızca uygulanan'], ['planlanan', 'Yalnızca uygulanacak']]) + '</label>' +
+      '</div>' + chips('tedavi', topTed) + '</div>' +
+      '<div class="card"><p class="card-h">Vizit</p><div class="grid2">' +
+        f('sikayet', 'Şikayet', 'Örn. bel ağrısı') +
+        f('muayene', 'Muayene bulgusu', 'Örn. McMurray') +
+        f('plan', 'Plan', 'Örn. MR, ameliyat') +
+        f('not', 'Önemli not', 'Örn. varfarin, alerji') +
+        '<label class="field"><span>Vizit tarihi: başlangıç</span><input type="date" data-adv="from" value="' + esc(a.from) + '"></label>' +
+        '<label class="field"><span>Vizit tarihi: bitiş</span><input type="date" data-adv="to" value="' + esc(a.to) + '"></label>' +
+      '</div></div>' +
+      '<div class="card"><p class="card-h">Hasta</p><div class="grid2">' +
+        f('kisi', 'Ad, soyad, TC veya telefon', '') +
+        '<label class="field"><span>Kontrol durumu</span>' + sel('kontrol', [['', 'Fark etmez'], ['yaklasan', 'Kontrolü 30 gün içinde'], ['gecmis', 'Kontrol tarihi geçmiş, gelmemiş'], ['var', 'Kontrol tarihi verilmiş']]) + '</label>' +
+      '</div><label class="check" style="margin-top:12px"><input type="checkbox" data-adv="gorsel"' + (a.gorsel ? ' checked' : '') + '>Yalnızca görüntüsü olan hastalar</label></div>' +
+      datalist('dlTani', topValues(['tani'], 60)) + datalist('dlIcd', topValues(['icd'], 40)) + datalist('dlTed', topValues(['tedaviUygulanan', 'tedaviPlanlanan'], 60)) +
+      '</form>' +
+      '<div class="adv-bar"><p id="advCount" class="adv-count"></p><span class="spacer"></span>' +
+        '<button class="btn primary" type="button" data-act="advJump" id="advJump" hidden>Sonuçları gör</button>' +
+        '<button class="btn ghost" type="button" data-act="advClear">Temizle</button>' +
+        '<button class="btn ghost" type="button" data-act="advExcel">Excel\'e aktar</button></div>' +
+      '<div id="advResults" class="adv-results"></div>';
+  }
+  function advRender() {
+    const box = document.getElementById('advResults'), cnt = document.getElementById('advCount');
+    if (!box) return;
+    if (!advActive()) {
+      cnt.textContent = 'Arama ölçütü girin.';
+      box.innerHTML = '';
+      return;
+    }
+    const res = advRun();
+    const nv = res.reduce((s, r) => s + r.vs.length, 0);
+    cnt.textContent = res.length ? res.length + ' hasta, ' + nv + ' vizit bulundu.' : 'Eşleşen kayıt yok.';
+    const j = document.getElementById('advJump'); if (j) j.hidden = !res.length;
+    const fd = new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const max = 200;
+    box.innerHTML = res.slice(0, max).map(({ x, vs }) => {
+      const p = x.p;
+      const rows = vs.slice(0, 4).map((v) => '<li><time>' + esc(fd.format(v.tarih)) + '</time><span>' +
+        esc(trim(v.tani) || trim(v.sikayet) || 'Tanı girilmemiş') + (trim(v.icd) ? ' <span class="icd">' + esc(v.icd) + '</span>' : '') +
+        (trim(v.tedaviUygulanan) || trim(v.tedaviPlanlanan) ? '<small>' + esc([v.tedaviUygulanan, v.tedaviPlanlanan].map(trim).filter(Boolean).join(' / ')) + '</small>' : '') +
+        '</span></li>').join('');
+      return '<a class="adv-hit" href="#/h/' + esc(p.id) + '"><div class="adv-hit-h"><b>' + esc(fullName(p)) + '</b>' +
+        (trim(p.tel) ? '<span>' + esc(PK.fmtPhone(p.tel)) + '</span>' : '') + (x.note ? '<span class="flag" title="Önemli not var"></span>' : '') +
+        (vs.length > 4 ? '<span class="muted small">+' + (vs.length - 4) + ' vizit</span>' : '') + '</div><ul>' + rows + '</ul></a>';
+    }).join('') + (res.length > max ? '<p class="muted small">İlk ' + max + ' hasta gösteriliyor. Ölçütleri daraltın.</p>' : '');
+  }
+  function advChanged() {
+    clearTimeout(S.advTimer);
+    S.advTimer = setTimeout(advRender, 120);
+  }
+
   /* ---------- ayarlar ---------- */
   function settingsView() {
     const st = S.settings;
@@ -816,11 +1336,12 @@
         '<label class="field"><span>Bu süre boyunca işlem yapılmazsa defter kilitlenir</span><select data-change="lockMinutes">' + [1, 3, 5, 10, 15, 30].map(opt).join('') + '</select></label>' +
       '</section>' +
       '<section class="set"><h3>Yedek</h3>' +
-        '<p class="muted">Yedek dosyası da defter parolasıyla şifrelidir. Geri yükleme mevcut kayıtlarla birleştirilir, hiçbir kaydı silmez.</p>' +
+        '<p class="muted">Yedek dosyası da defter parolasıyla şifrelidir. Geri yükleme mevcut kayıtlarla birleştirilir, hiçbir kaydı silmez. Görüntüler bu dosyaya girmez; şifreli kopyaları Google Drive\'da durur.</p>' +
         '<div class="row-btns"><button class="btn ghost" type="button" data-act="exportBackup">Şifreli yedeği indir</button>' +
         '<label class="btn ghost">Yedekten geri yükle<input type="file" accept=".pkd,application/json" data-change="importBackup" hidden></label></div>' +
         '<p class="small muted">' + (st.lastBackup ? 'Son yedek: ' + esc(fFull.format(st.lastBackup)) : 'Henüz yedek alınmadı.') + '</p>' +
       '</section>' +
+      excelSection() +
       '<section class="set"><h3>Parolayı değiştir</h3>' +
         '<form data-form="changePw" autocomplete="off">' +
         '<div class="grid2">' +
@@ -919,11 +1440,42 @@
         '<label class="field"><span>Onay</span><input name="confirm" autocomplete="off" autocapitalize="characters"></label><p class="err"></p><div class="acts">' +
         '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn danger" type="submit">Hastayı sil</button></div></form>');
       if (!ok) return;
-      S.db.patients[p.id] = { id: p.id, deleted: true, updatedAt: Date.now(), visits: {} };
+      const imgs = {};
+      for (const iid of Object.keys(p.images || {})) { imgs[iid] = { id: iid, deleted: true, updatedAt: Date.now() }; await idb.del('img:' + iid).catch(() => {}); }
+      S.db.patients[p.id] = { id: p.id, deleted: true, updatedAt: Date.now(), visits: {}, images: imgs };
       await markChanged();
       S.form = null; toast('Hasta silindi.'); go('#/');
     },
     saveClientId() { saveClientId(); },
+    openImage(el) { openImageViewer(el.dataset.pid, el.dataset.iid); },
+    advChip(el) {
+      const f = el.dataset.field, v = el.dataset.val;
+      const cur = trim(S.adv[f]);
+      const parts = cur ? cur.split(',').map(trim) : [];
+      if (!parts.some((p) => PK.fold(p) === PK.fold(v))) parts.push(v);
+      S.adv[f] = parts.join(', ');
+      const inp = document.querySelector('[data-adv="' + f + '"]');
+      if (inp) inp.value = S.adv[f];
+      advRender();
+    },
+    advJump() {
+      const r = document.getElementById('advResults');
+      if (r) r.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    },
+    advClear() {
+      S.adv = { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false };
+      renderMain();
+    },
+    advExcel(el) {
+      if (!advActive()) { toast('Önce arama ölçütü girin.', true); return; }
+      const res = advRun().map((r) => ({ x: r.x, vs: r.vs.slice().sort((a, b) => a.tarih - b.tarih) }));
+      el.disabled = true;
+      exportExcel(res, 'Detaylı arama sonucu').catch((e) => toast('Excel dosyası oluşturulamadı: ' + e.message, true)).finally(() => { el.disabled = false; });
+    },
+    exportExcel(el) {
+      el.disabled = true;
+      exportExcel().catch((e) => toast('Excel dosyası oluşturulamadı: ' + e.message, true)).finally(() => { el.disabled = false; });
+    },
     async disconnect() {
       const ok = await confirmDlg('Google bağlantısı kesilsin mi?', 'Bu cihaz Drive ile eşitlemeyi bırakır. Drive\'daki şifreli kopya ve bu cihazdaki kayıtlar silinmez.', 'Bağlantıyı kes');
       if (!ok) return;
@@ -948,7 +1500,7 @@
         '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn danger" type="submit">Cihazdan sil</button></div></form>');
       if (!ok) return;
       Drive.signOut();
-      await idb.del('vault'); await idb.del('draft'); await idb.del('settings');
+      await idb.clear();
       location.hash = ''; location.reload();
     }
   };
@@ -1026,6 +1578,7 @@
       catch (e) { renderSetup(e.message); }
     },
     record() { saveForm(); },
+    adv() { advRender(); },
     clientId() { saveClientId(); },
     async changePw(form) {
       const er = document.getElementById('pwErr');
@@ -1072,6 +1625,21 @@
       toast('Yedek birleştirildi. ' + (after - before) + ' yeni hasta eklendi.');
     },
     async autoSync(el) { S.settings.autoSyncOnUnlock = el.checked; await saveSettings(); },
+    async addImages(el) {
+      const files = Array.from(el.files || []); el.value = '';
+      if (!files.length) return;
+      const r = await dialog('<form method="dialog"><h3>' + files.length + ' görüntü eklenecek</h3><p>İsterseniz kısa bir açıklama yazın. Sonra görüntüye dokunarak değiştirebilirsiniz.</p>' +
+        '<label class="field"><span>Açıklama (isteğe bağlı)</span><input name="note" placeholder="Örn. Sağ diz AP grafi" autocomplete="off"></label><div class="acts">' +
+        '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Ekle</button></div></form>');
+      if (!r) return;
+      toast('Görüntüler hazırlanıyor…');
+      const n = await addImages(el.dataset.id, files, r.note);
+      if (n) { renderMain(); toast(n + ' görüntü eklendi.'); }
+    },
+    xlRange(el) { S.xl.range = el.value; refreshXl(); },
+    xlFrom(el) { S.xl.from = el.value; refreshXl(); },
+    xlTo(el) { S.xl.to = el.value; refreshXl(); },
+    xlIds(el) { S.xl.ids = el.checked; },
     async lockMinutes(el) { S.settings.lockMinutes = Number(el.value); await saveSettings(); toast('Otomatik kilit: ' + el.value + ' dakika.'); }
   };
 
@@ -1089,11 +1657,21 @@
     if (fn) fn(form);
   });
   $app.addEventListener('change', (e) => {
+    if (e.target.dataset && e.target.dataset.adv) {
+      S.adv[e.target.dataset.adv] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      advRender();
+      return;
+    }
     const el = e.target.closest('[data-change]');
     if (el && CHANGES[el.dataset.change]) CHANGES[el.dataset.change](el);
   });
   $app.addEventListener('input', (e) => {
     const el = e.target;
+    if (el.dataset && el.dataset.adv) {
+      S.adv[el.dataset.adv] = el.type === 'checkbox' ? el.checked : el.value;
+      advChanged();
+      return;
+    }
     if (!S.form || !el.dataset || !el.dataset.f) return;
     S.form.data[el.dataset.f] = el.value;
     S.form.dirty = true;
@@ -1104,6 +1682,7 @@
     if (!S.unlocked) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.form) { e.preventDefault(); saveForm(); return; }
     if (e.altKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); go('#/yeni'); return; }
+    if (e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); go('#/arama'); return; }
     const tag = (e.target.tagName || '').toLowerCase();
     if (e.key === '/' && tag !== 'input' && tag !== 'textarea' && !$dlg.open) {
       const q = document.getElementById('q');
