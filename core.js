@@ -91,11 +91,12 @@
   function normalizeDB(db) {
     if (!db || typeof db !== 'object') return emptyDB();
     const out = { schema: 1, patients: {}, keys: Object.assign({}, db.keys || {}) };
+    if (db.cal && db.cal.id) out.cal = Object.assign({}, db.cal);
     const src = db.patients || {};
     for (const id of Object.keys(src)) {
       const p = src[id];
       if (!p || !p.id) continue;
-      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}), images: Object.assign({}, p.images || {}) });
+      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}), images: Object.assign({}, p.images || {}), reminders: Object.assign({}, p.reminders || {}) });
     }
     return out;
   }
@@ -109,10 +110,10 @@
     return b.deleted && !a.deleted ? b : a;
   }
   /* Silinen hastanın görüntü kimlikleri tutulur ki her cihaz şifreli görüntü dosyalarını da silebilsin. */
-  function scrubPatient(p, imgs) {
-    const images = {};
-    for (const id of Object.keys(imgs || {})) images[id] = { id, deleted: true, updatedAt: p.updatedAt || Date.now() };
-    return { id: p.id, deleted: true, updatedAt: p.updatedAt || Date.now(), visits: {}, images };
+  function scrubPatient(p, imgs, rems) {
+    const t = p.updatedAt || Date.now();
+    const tomb = (m) => { const o = {}; for (const id of Object.keys(m || {})) o[id] = { id, deleted: true, updatedAt: Math.max(t, (m[id] && m[id].updatedAt) || 0) }; return o; };
+    return { id: p.id, deleted: true, updatedAt: t, visits: {}, images: tomb(imgs), reminders: tomb(rems) };
   }
   function scrubVisit(v) { return { id: v.id, deleted: true, updatedAt: v.updatedAt || Date.now() }; }
   function mergeMap(ma, mb) {
@@ -130,15 +131,19 @@
     const out = emptyDB();
     // Görüntü anahtarları hiçbir zaman silinmez; iki cihazınkiler birleştirilir.
     out.keys = Object.assign({}, b.keys, a.keys);
+    const ca = a.cal, cb = b.cal;
+    if (ca || cb) out.cal = Object.assign({}, !ca ? cb : !cb ? ca : (cb.updatedAt || 0) > (ca.updatedAt || 0) ? cb : (cb.updatedAt || 0) < (ca.updatedAt || 0) ? ca : (ca.id < cb.id ? ca : cb));
     const ids = new Set(Object.keys(a.patients).concat(Object.keys(b.patients)));
     for (const id of ids) {
       const pa = a.patients[id], pb = b.patients[id];
       const top = lww(pa, pb);
       const images = mergeMap(pa && pa.images, pb && pb.images);
-      if (top.deleted) { out.patients[id] = scrubPatient(top, images); continue; }
+      const reminders = mergeMap(pa && pa.reminders, pb && pb.reminders);
+      if (top.deleted) { out.patients[id] = scrubPatient(top, images, reminders); continue; }
       const p = Object.assign({}, top);
       p.visits = mergeMap(pa && pa.visits, pb && pb.visits);
       p.images = images;
+      p.reminders = reminders;
       out.patients[id] = p;
     }
     return out;

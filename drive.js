@@ -5,12 +5,14 @@
   'use strict';
 
   const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const CAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
+  const CAL = 'https://www.googleapis.com/calendar/v3';
   const FILE = 'poliklinik-defteri.pkd';
   const API = 'https://www.googleapis.com/drive/v3/files';
   const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
 
   let tokenClient = null, clientIdUsed = null;
-  let token = null, tokenExp = 0, pending = null, loadP = null;
+  let token = null, tokenExp = 0, pending = null, loadP = null, calUsed = false, granted = '';
 
   function loadGis() {
     if (root.google && root.google.accounts && root.google.accounts.oauth2) return Promise.resolve();
@@ -27,17 +29,20 @@
   }
 
   /* Giriş penceresi yalnızca bir dokunuşla açılabildiği için hazırlık önceden yapılır. */
-  async function prepare(clientId) {
+  async function prepare(clientId, withCalendar) {
     if (!clientId) { tokenClient = null; return false; }
-    if (tokenClient && clientIdUsed === clientId) return true;
+    withCalendar = !!withCalendar;
+    if (tokenClient && clientIdUsed === clientId && calUsed === withCalendar) return true;
     await loadGis();
     tokenClient = root.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: SCOPE,
+      scope: withCalendar ? SCOPE + ' ' + CAL_SCOPE : SCOPE,
+      include_granted_scopes: true,
       callback: (r) => {
         const p = pending; pending = null;
         if (r.error) { p && p.rej(new Error('Google izni verilmedi (' + r.error + ').')); return; }
         token = r.access_token;
+        granted = String(r.scope || '');
         tokenExp = Date.now() + (Number(r.expires_in) || 3600) * 1000 - 60000;
         p && p.res(token);
       },
@@ -49,9 +54,12 @@
         p && p.rej(new Error(msg));
       }
     });
+    if (clientIdUsed === clientId && calUsed !== withCalendar && withCalendar) { token = null; tokenExp = 0; }
     clientIdUsed = clientId;
+    calUsed = withCalendar;
     return true;
   }
+  function hasCalendar() { return hasToken() && granted.split(/\s+/).indexOf(CAL_SCOPE) >= 0; }
 
   function isReady() { return !!tokenClient; }
   function hasToken() { return !!token && Date.now() < tokenExp; }
@@ -70,7 +78,7 @@
     if (token && root.google && root.google.accounts && root.google.accounts.oauth2) {
       try { root.google.accounts.oauth2.revoke(token, () => {}); } catch (e) { /* yok say */ }
     }
-    token = null; tokenExp = 0;
+    token = null; tokenExp = 0; granted = '';
   }
 
   async function api(url, opts) {
@@ -151,5 +159,38 @@
     catch (e) { if (e.status !== 404) throw e; }
   }
 
-  root.Drive = { prepare, isReady, hasToken, signIn, signOut, findFile, download, upload, listImages, uploadBytes, downloadBytes, remove };
+  /* ---------- Google Takvim (yalnızca uygulamanın oluşturduğu takvim) ---------- */
+  async function calJSON(method, url, body) {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    try {
+      const r = await api(CAL + url, opts);
+      return r.status === 204 ? null : r.json();
+    } catch (e) {
+      if (e.status === 403) e.message = 'Google Takvim izni yok veya Google Calendar API açık değil (kurulum kılavuzu, hatırlatma bölümü).';
+      throw e;
+    }
+  }
+  async function calEnsure(calId, summary, tz) {
+    if (calId) {
+      try { await calJSON('GET', '/calendars/' + encodeURIComponent(calId)); return { id: calId, created: false }; }
+      catch (e) { if (e.status !== 404 && e.status !== 410) throw e; }
+    }
+    const c = await calJSON('POST', '/calendars', { summary, description: 'Poliklinik Defteri hatırlatmaları', timeZone: tz });
+    return { id: c.id, created: true };
+  }
+  async function calUpsert(calId, evId, ev) {
+    const base = '/calendars/' + encodeURIComponent(calId) + '/events';
+    try { return await calJSON('PUT', base + '/' + encodeURIComponent(evId), Object.assign({ status: 'confirmed' }, ev)); }
+    catch (e) {
+      if (e.status !== 404 && e.status !== 410) throw e;
+      return calJSON('POST', base, Object.assign({ id: evId }, ev));
+    }
+  }
+  async function calDelete(calId, evId) {
+    try { await calJSON('DELETE', '/calendars/' + encodeURIComponent(calId) + '/events/' + encodeURIComponent(evId)); }
+    catch (e) { if (e.status !== 404 && e.status !== 410) throw e; }
+  }
+
+  root.Drive = { prepare, isReady, hasToken, hasCalendar, signIn, signOut, findFile, download, upload, listImages, uploadBytes, downloadBytes, remove, calEnsure, calUpsert, calDelete };
 })(self);

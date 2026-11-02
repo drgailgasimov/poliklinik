@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
   const $dlg = document.getElementById('dlg');
@@ -40,7 +40,7 @@
     imgBusy: false
   };
 
-  const DEFAULT_SETTINGS = { lockMinutes: 5, autoSyncOnUnlock: true, clientId: '', driveConnected: false, driveFileId: '', lastSync: 0, lastBackup: 0 };
+  const DEFAULT_SETTINGS = { lockMinutes: 5, autoSyncOnUnlock: true, clientId: '', driveConnected: false, driveFileId: '', lastSync: 0, lastBackup: 0, calendarOn: false, remTime: '09:00', calInitials: false, calId: '', calPushed: {}, lastCalSync: 0 };
 
   /* ================= IndexedDB ================= */
   const idb = (() => {
@@ -137,7 +137,8 @@
       let kontrol = '';
       for (const v of vs) if (v.kontrol && (!kontrol || v.kontrol > kontrol)) kontrol = v.kontrol;
       const note = (vs.find((v) => trim(v.onemliNot)) || {}).onemliNot || '';
-      return { p, vs, last, lastTime: last ? last.tarih : p.createdAt, kontrol, note: trim(note) };
+      const rems = openReminders(p);
+      return { p, vs, last, lastTime: last ? last.tarih : p.createdAt, kontrol, note: trim(note), rems, nextRem: rems[0] || null };
     });
   }
   function getPatient(id) { const p = S.db && S.db.patients[id]; return p && !p.deleted ? p : null; }
@@ -148,6 +149,7 @@
     const parts = [p.ad, p.soyad, p.tc, p.tel, PK.normPhone(p.tel)];
     for (const v of x.vs) for (const f of VISIT_FIELDS) parts.push(v[f]);
     for (const im of liveImages(p)) parts.push(im.note);
+    for (const rm of Object.values(p.reminders || {})) if (!rm.deleted) parts.push(rm.note);
     return PK.fold(parts.join(' '));
   }
 
@@ -191,6 +193,8 @@
     b.title = msg || label;
     const st = document.getElementById('syncStatus');
     if (st) st.textContent = syncStatusText();
+    const cs = document.getElementById('calStatus');
+    if (cs) cs.textContent = calStatusText();
   }
   function syncStatusText() {
     if (!S.settings.clientId) return 'İstemci kimliği girilmedi.';
@@ -239,6 +243,13 @@
       const vault = await currentVault();
       S.settings.driveFileId = await Drive.upload(fileId, vault);
       await syncImages();
+      try {
+        if (await syncCalendar()) S.settings.driveFileId = await Drive.upload(S.settings.driveFileId, await currentVault());
+      } catch (e) {
+        if (e.status === 401) throw e;
+        S.calMsg = 'Takvim eşitlenemedi: ' + e.message;
+        toast(S.calMsg, true);
+      }
       S.settings.lastSync = Date.now();
       S.settings.driveConnected = true;
       S.prevKeyring = null;
@@ -260,12 +271,164 @@
   function syncFromTap() {
     if (!S.settings.clientId) { go('#/ayarlar'); toast('Eşitleme için önce Google istemci kimliğini girin.'); return; }
     if (!Drive.isReady()) {
-      Drive.prepare(S.settings.clientId).then(() => toast('Google hazır. Eşitle\'ye tekrar dokunun.')).catch((e) => toast(e.message, true));
+      Drive.prepare(S.settings.clientId, S.settings.calendarOn).then(() => toast('Google hazır. Eşitle\'ye tekrar dokunun.')).catch((e) => toast(e.message, true));
       return;
     }
     const run = () => syncNow().then(() => toast('Eşitlendi.')).catch((e) => toast(e.message, true));
     if (Drive.hasToken()) { run(); return; }
     Drive.signIn(!S.settings.driveConnected).then(run).catch((e) => { setSync('error', e.message); toast(e.message, true); });
+  }
+
+  /* ================= hatırlatmalar ================= */
+  const remTs = (r) => new Date(r.date + 'T' + (r.time || '09:00') + ':00').getTime();
+  function openReminders(p) {
+    return Object.values((p && p.reminders) || {}).filter((r) => !r.deleted && !r.done && r.date).sort((a, b) => remTs(a) - remTs(b));
+  }
+  function remDayLabel(r) {
+    const d = new Date(r.date + 'T00:00:00').getTime();
+    return dayLabel(d);
+  }
+  function remDueCounts() {
+    const t0 = startOfDay(Date.now());
+    let today = 0, tomorrow = 0, late = 0;
+    for (const x of livePatients()) for (const r of x.rems) {
+      const d = new Date(r.date + 'T00:00:00').getTime();
+      if (d < t0) late++; else if (d === t0) today++; else if (d === t0 + 86400000) tomorrow++;
+    }
+    return { today, tomorrow, late };
+  }
+  function initials(p) {
+    return [p.ad, p.soyad].map((w) => trim(w).charAt(0).toLocaleUpperCase('tr-TR')).filter(Boolean).join('.') + '.';
+  }
+  function tomorrowISO() { const d = new Date(Date.now() + 86400000), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); }
+
+  function remindersSection(p) {
+    const all = Object.values(p.reminders || {}).filter((r) => !r.deleted);
+    const open = openReminders(p);
+    const done = all.filter((r) => r.done).sort((a, b) => remTs(b) - remTs(a));
+    const t0 = startOfDay(Date.now());
+    const item = (r) => {
+      const d = new Date(r.date + 'T00:00:00').getTime();
+      const late = !r.done && d < t0;
+      return '<li class="rem' + (r.done ? ' done' : '') + (late ? ' late' : '') + '">' +
+        '<button class="rem-check" type="button" data-act="remToggle" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '" aria-pressed="' + !!r.done + '" aria-label="' + (r.done ? 'Tamamlanmadı olarak işaretle' : 'Tamamlandı olarak işaretle') + '"></button>' +
+        '<div class="rem-body"><b>' + esc(r.note) + '</b><span>' + esc(remDayLabel(r)) + (remDayLabel(r).match(/^(Bugün|Dün|Yarın)$/) ? ', ' + esc(fFull.format(d)) : '') + ', ' + esc(r.time || '09:00') + (late ? ' (geçti)' : '') + '</span></div>' +
+        '<button class="link" type="button" data-act="remEdit" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Düzenle</button></li>';
+    };
+    return '<section class="reminders" aria-labelledby="remH">' +
+      '<div class="visits-h"><h3 id="remH">Hatırlatmalar' + (open.length ? ' <span class="count">' + open.length + '</span>' : '') + '</h3>' +
+      '<button class="btn ghost" type="button" data-act="remAdd" data-pid="' + esc(p.id) + '">' + IC.plus + 'Hatırlatma ekle</button></div>' +
+      (open.length ? '<ul class="rem-list">' + open.map(item).join('') + '</ul>' : '<p class="muted small">İleri tarihli bir iş için hatırlatma ekleyin: tahlil sonucu sorma, kontrol araması, ameliyat hazırlığı gibi.' + (S.settings.calendarOn ? ' Bildirim bir gün önce telefonunuza gelir.' : ' Telefona bildirim için Ayarlar → Telefona bildirim bölümünü açın.') + '</p>') +
+      (done.length ? '<details class="rem-done"><summary>Tamamlananlar (' + done.length + ')</summary><ul class="rem-list">' + done.slice(0, 20).map(item).join('') + '</ul></details>' : '') +
+      '</section>';
+  }
+
+  async function reminderDialog(pid, rid) {
+    const p = getPatient(pid); if (!p) return;
+    const r = rid ? p.reminders[rid] : null;
+    const st = S.settings;
+    const res = await dialog('<form method="dialog"><h3>' + (r ? 'Hatırlatmayı düzenle' : 'Hatırlatma ekle') + '</h3><p class="muted">' + esc(fullName(p)) + '</p>' +
+      '<label class="field"><span>Ne hatırlatılsın?</span><input name="note" required maxlength="140" value="' + esc(r ? r.note : '') + '" placeholder="Örn. MR sonucunu sor, kontrol için ara" autocomplete="off"></label>' +
+      '<div class="grid2"><label class="field"><span>Tarih</span><input type="date" name="date" required value="' + esc(r ? r.date : tomorrowISO()) + '"></label>' +
+      '<label class="field"><span>Saat</span><input type="time" name="time" required value="' + esc(r ? (r.time || st.remTime) : st.remTime) + '"></label></div>' +
+      '<label class="check"><input type="checkbox" name="both"' + (!r || r.both ? ' checked' : '') + '>Bir gün önce ve o gün, saatinde bildir (işaretsizse yalnızca bir gün önce)</label>' +
+      (st.calendarOn ? '<p class="hint">Bildirim metni Google Takvim\'de görünür. Nota hasta adı, TC veya telefon yazmayın; bildirime dokununca hasta kartı açılır.</p>' : '<p class="hint">Telefona bildirim kapalı. Hatırlatma yalnızca uygulamada görünür. Açmak için: Ayarlar → Telefona bildirim.</p>') +
+      '<div class="acts">' + (r ? '<button class="btn danger" type="button" data-dlg-del style="margin-right:auto">Sil</button>' : '') +
+      '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Kaydet</button></div></form>',
+      (form, close) => { const b = form.querySelector('[data-dlg-del]'); if (b) b.addEventListener('click', () => close({ __delete: true })); });
+    if (!res) return;
+    const now = Date.now();
+    const cur = getPatient(pid);
+    if (res.__delete) {
+      cur.reminders = Object.assign({}, cur.reminders, { [rid]: { id: rid, deleted: true, updatedAt: now } });
+      await markChanged(); renderMain(); renderList(); toast('Hatırlatma silindi.');
+      return;
+    }
+    if (!trim(res.note) || !res.date) return;
+    const id = rid || uid();
+    const base = r ? Object.assign({}, r) : { id, createdAt: now, done: false };
+    cur.reminders = Object.assign({}, cur.reminders, { [id]: Object.assign(base, { note: trim(res.note), date: res.date, time: res.time || st.remTime, both: res.both === 'on', updatedAt: now }) });
+    await markChanged(); renderMain(); renderList();
+    toast(r ? 'Hatırlatma güncellendi.' : 'Hatırlatma eklendi.' + (st.calendarOn ? (Drive.hasCalendar() ? '' : ' Telefona gitmesi için Eşitle\'ye dokunun.') : ''));
+  }
+  async function toggleReminder(pid, rid) {
+    const p = getPatient(pid); const r = p && p.reminders[rid]; if (!r) return;
+    p.reminders = Object.assign({}, p.reminders, { [rid]: Object.assign({}, r, { done: !r.done, doneAt: r.done ? 0 : Date.now(), updatedAt: Date.now() }) });
+    await markChanged(); renderMain(); renderList();
+    toast(r.done ? 'Hatırlatma yeniden açıldı.' : 'Hatırlatma tamamlandı.');
+  }
+  /* Vizit formundaki "kontrol günü için hatırlat" kutusu */
+  function applyKontrolReminder(p, vid, d) {
+    const now = Date.now();
+    const ex = Object.values(p.reminders || {}).find((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
+    if (d.kontrolHatirlat && d.kontrol) {
+      const id = ex ? ex.id : uid();
+      const base = ex ? Object.assign({}, ex) : { id, kind: 'kontrol', visitId: vid, note: 'Kontrol günü', time: S.settings.remTime, both: true, done: false, createdAt: now };
+      if (!ex || ex.date !== d.kontrol) p.reminders = Object.assign({}, p.reminders, { [id]: Object.assign(base, { date: d.kontrol, done: false, updatedAt: now }) });
+    } else if (ex) {
+      p.reminders = Object.assign({}, p.reminders, { [ex.id]: { id: ex.id, deleted: true, updatedAt: now } });
+    }
+  }
+
+  /* ---- Google Takvim'e aktarma: her hatırlatma bir etkinlik, kimliği sabit ---- */
+  function evIdFor(id) { const x = String(id).toLowerCase().replace(/[^a-v0-9]/g, ''); return 'pk' + (x.length >= 4 ? x : x + '0000'); }
+  function hashStr(t) { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return String(h >>> 0); }
+  function fmtLocal(ts) { const d = new Date(ts), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':00'; }
+  function buildEvent(p, r, tz) {
+    const start = remTs(r);
+    const link = location.origin + location.pathname + '#/h/' + p.id;
+    const who = S.settings.calInitials ? initials(p) + ' ' : '';
+    return {
+      summary: 'Hatırlatma: ' + who + trim(r.note).slice(0, 100),
+      description: 'Poliklinik Defteri hatırlatması.\nHasta kartını açmak için: ' + link,
+      start: { dateTime: fmtLocal(start), timeZone: tz },
+      end: { dateTime: fmtLocal(start + 15 * 60000), timeZone: tz },
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }].concat(r.both ? [{ method: 'popup', minutes: 0 }] : []) },
+      transparency: 'transparent',
+      visibility: 'private'
+    };
+  }
+  async function syncCalendar() {
+    if (!S.settings.calendarOn || !S.unlocked) return false;
+    if (!Drive.hasCalendar()) { S.calMsg = 'Google Takvim izni verilmedi. Ayarlar → Telefona bildirim → izin ver.'; return false; }
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Europe/Istanbul';
+    const curId = S.db.cal && S.db.cal.id;
+    const cal = await Drive.calEnsure(curId, 'Poliklinik Defteri', tz);
+    let changed = false;
+    if (cal.id !== curId) { S.db.cal = { id: cal.id, updatedAt: Date.now() }; await persist(); changed = true; }
+    if (S.settings.calId !== cal.id) { S.settings.calId = cal.id; S.settings.calPushed = {}; }
+    const pushed = Object.assign({}, S.settings.calPushed);
+    let n = 0;
+    try {
+      for (const p of Object.values(S.db.patients)) for (const r of Object.values(p.reminders || {})) {
+        if (!S.unlocked) return changed;
+        const evId = evIdFor(r.id);
+        const live = !p.deleted && !r.deleted && !r.done && r.date;
+        if (!live) {
+          if (pushed[r.id] !== 'x') { await Drive.calDelete(cal.id, evId); pushed[r.id] = 'x'; n++; }
+          continue;
+        }
+        const ev = buildEvent(p, r, tz);
+        const h = hashStr(JSON.stringify(ev));
+        if (pushed[r.id] === h) continue;
+        await Drive.calUpsert(cal.id, evId, ev);
+        pushed[r.id] = h; n++;
+      }
+    } finally {
+      S.settings.calPushed = pushed;
+      S.settings.lastCalSync = Date.now();
+      S.calMsg = '';
+      await saveSettings();
+    }
+    return changed;
+  }
+  function calStatusText() {
+    const st = S.settings;
+    if (!st.calendarOn) return 'Kapalı. Hatırlatmalar yalnızca uygulamada görünür.';
+    if (S.calMsg) return S.calMsg;
+    if (!Drive.hasToken()) return 'Açık. Eşitlemek için Eşitle düğmesine dokunun.';
+    if (!Drive.hasCalendar()) return 'Google Takvim izni henüz verilmedi. Aşağıdaki düğmeye dokunun.';
+    return 'Açık. ' + (st.lastCalSync ? 'Takvim son eşitleme: ' + fTime.format(st.lastCalSync) + '.' : 'Henüz eşitlenmedi.');
   }
 
   /* ================= görüntüler ================= */
@@ -553,9 +716,17 @@
         }
       }
     } catch (e) { /* taslak yoksa geç */ }
-    if (S.settings.clientId && navigator.onLine && !Drive.isReady()) Drive.prepare(S.settings.clientId).catch(() => {});
+    if (S.settings.clientId && navigator.onLine && !Drive.isReady()) Drive.prepare(S.settings.clientId, S.settings.calendarOn).catch(() => {});
     if (tokenPromise) tokenPromise.then((t) => { if (t && S.unlocked) syncNow().catch((e) => toast(e.message, true)); });
     refreshSyncState();
+    if (!S.form) {
+      const c = remDueCounts();
+      const parts = [];
+      if (c.late) parts.push(c.late + ' geçmiş');
+      if (c.today) parts.push('bugün ' + c.today);
+      if (c.tomorrow) parts.push('yarın ' + c.tomorrow);
+      if (parts.length) setTimeout(() => toast('Hatırlatmalar: ' + parts.join(', ') + '. Listede “Hatırlatma” filtresine bakın.'), 600);
+    }
   }
   async function openDraft(vault) {
     // taslak, defterle aynı anahtarla { draft } olarak saklanır
@@ -587,7 +758,7 @@
     const inp = $app.querySelector('input[name=pw]');
     setTimeout(() => inp && inp.focus(), 30);
     if (S.settings.clientId && S.settings.driveConnected && S.settings.autoSyncOnUnlock && navigator.onLine) {
-      Drive.prepare(S.settings.clientId).catch(() => {});
+      Drive.prepare(S.settings.clientId, S.settings.calendarOn).catch(() => {});
     }
   }
 
@@ -623,7 +794,7 @@
     }
     if (m === 'drive' && !S.pendingVault && S.settings.clientId && !Drive.isReady() && !S._preparing) {
       S._preparing = true;
-      Drive.prepare(S.settings.clientId).then(() => { S._preparing = false; if (!S.unlocked && S.setupMode === 'drive') renderSetup(); })
+      Drive.prepare(S.settings.clientId, S.settings.calendarOn).then(() => { S._preparing = false; if (!S.unlocked && S.setupMode === 'drive') renderSetup(); })
         .catch((e) => { S._preparing = false; const er = document.getElementById('setupErr'); if (er) er.textContent = e.message; });
     }
     $app.innerHTML = '<main class="lock"><div class="lock-card">' + brandBlock() +
@@ -721,14 +892,17 @@
     const isToday = (x) => x.lastTime >= t0;
     const isKontrol = (x) => { const k = kontrolTs(x.kontrol); return k >= t0 && k < in14; };
     const isNote = (x) => !!x.note;
-    const counts = { all: all.length, today: all.filter(isToday).length, kontrol: all.filter(isKontrol).length, note: all.filter(isNote).length };
-    const fl = [['all', 'Tümü'], ['today', 'Bugün'], ['kontrol', 'Kontrol'], ['note', 'Notlu']];
+    const in8 = t0 + 8 * 86400000;
+    const isRem = (x) => !!x.nextRem && new Date(x.nextRem.date + 'T00:00:00').getTime() < in8;
+    const counts = { all: all.length, today: all.filter(isToday).length, rem: all.filter(isRem).length, kontrol: all.filter(isKontrol).length, note: all.filter(isNote).length };
+    const fl = [['all', 'Tümü'], ['today', 'Bugün'], ['rem', 'Hatırlatma'], ['kontrol', 'Kontrol'], ['note', 'Notlu']];
     $f.innerHTML = fl.map(([id, t]) => '<button type="button" data-act="filter" data-f="' + id + '" aria-pressed="' + (S.filter === id) + '">' + t + '<em>' + counts[id] + '</em></button>').join('');
 
     let items = all;
     if (S.filter === 'today') items = items.filter(isToday);
     if (S.filter === 'kontrol') items = items.filter(isKontrol);
     if (S.filter === 'note') items = items.filter(isNote);
+    if (S.filter === 'rem') items = items.filter((x) => !!x.nextRem);
     const toks = PK.fold(S.query).split(/\s+/).filter(Boolean);
     if (toks.length) items = items.filter((x) => { const hs = haystack(x); return toks.every((t) => hs.includes(t)); });
 
@@ -740,16 +914,29 @@
         : '<div class="empty"><h3>Defter boş</h3><p>İlk hastayı eklemek için “Yeni hasta”ya dokunun.</p></div>';
       return;
     }
-    const row = (x, metaTop) => {
-      const sub = trim(x.last && (x.last.tani || x.last.sikayet)) || 'Vizit bilgisi yok';
+    const row = (x, metaTop, subOverride) => {
+      const sub = subOverride || trim(x.last && (x.last.tani || x.last.sikayet)) || 'Vizit bilgisi yok';
       const k = kontrolTs(x.kontrol);
-      const chip = x.kontrol && k >= t0 ? '<span class="chip">Kontrol ' + fShort.format(k) + '</span>' : '';
+      let chip = x.kontrol && k >= t0 ? '<span class="chip">Kontrol ' + fShort.format(k) + '</span>' : '';
+      if (x.nextRem && isRem(x) && S.filter !== 'rem') {
+        const rd = new Date(x.nextRem.date + 'T00:00:00').getTime();
+        chip += '<span class="chip rem-chip' + (rd < t0 ? ' late' : '') + '">Hatırlatma ' + fShort.format(rd) + '</span>';
+      }
       return '<a class="row" href="#/h/' + esc(x.p.id) + '"' + (curId === x.p.id ? ' aria-current="page"' : '') + '>' +
         '<span class="row-main"><span class="row-name">' + esc(fullName(x.p)) + '</span><span class="row-sub">' + esc(sub) + '</span></span>' +
         '<span class="row-meta"><span>' + esc(metaTop) + '</span>' + (x.note ? '<span class="flag" title="Önemli not var" aria-label="Önemli not var"></span>' : '') + chip + '</span></a>';
     };
     let html = '';
-    if (S.filter === 'kontrol') {
+    if (S.filter === 'rem') {
+      items.sort((a, b) => remTs(a.nextRem) - remTs(b.nextRem));
+      let g = '';
+      for (const x of items) {
+        const rd = new Date(x.nextRem.date + 'T00:00:00').getTime();
+        const lbl = rd < t0 ? 'Geçmiş' : dayLabel(rd);
+        if (lbl !== g) { g = lbl; html += '<h3 class="group-h">' + esc(lbl) + '</h3>'; }
+        html += row(x, x.nextRem.time || '', x.nextRem.note + (x.rems.length > 1 ? ' (+' + (x.rems.length - 1) + ')' : ''));
+      }
+    } else if (S.filter === 'kontrol') {
       items.sort((a, b) => kontrolTs(a.kontrol) - kontrolTs(b.kontrol));
       let g = '';
       for (const x of items) {
@@ -845,6 +1032,7 @@
         '</div>' +
       '</header>' +
       (x.note ? '<aside class="alert-box"><h4>Önemli not</h4><p>' + esc(x.note) + '</p></aside>' : '') +
+      remindersSection(p) +
       imagesSection(p) +
       '<div class="visits-h"><h3>Vizitler</h3></div>' +
       (visits ? '<ol class="visits">' + visits + '</ol>' : '<div class="empty"><p>Bu hastaya ait vizit yok.</p></div>') +
@@ -878,8 +1066,9 @@
       f.data = { tarih: toLocalInput(Date.now()) };
     }
     if (mode === 'editVisit') {
-      const v = getPatient(pid).visits[vid];
-      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih) });
+      const p0 = getPatient(pid), v = p0.visits[vid];
+      const hasRem = Object.values(p0.reminders || {}).some((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
+      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih), kontrolHatirlat: hasRem });
     }
     if (mode === 'editPatient') {
       const p = getPatient(pid);
@@ -919,7 +1108,8 @@
       panel('muayene', ta('muayene', 'Muayenedeki en önemli bulgu', 'Örn. McMurray (+) medial, efüzyon yok')) +
       panel('tani', ta('tani', 'Tanı', 'Örn. Sağ diz medial menisküs yırtığı') + '<div class="grid2">' + inp('icd', 'ICD-10 kodu (isteğe bağlı)', 'autocomplete="off" spellcheck="false" placeholder="M23.2"') + '</div>') +
       panel('tedavi', ta('tedaviUygulanan', 'Uygulanan tedavi', 'Bugün yapılanlar: ilaç, enjeksiyon, atel…') + ta('tedaviPlanlanan', 'Uygulanacak tedavi', 'Planlanan tedavi, cerrahi…')) +
-      panel('plan', ta('plan', 'Plan', 'Tetkikler, sevk, kontrol planı') + '<div class="grid2">' + '<label class="field"><span>Kontrol tarihi</span><input type="date" name="kontrol" data-f="kontrol" value="' + esc(f.data.kontrol || '') + '" min="2000-01-01"></label>' + '</div>') +
+      panel('plan', ta('plan', 'Plan', 'Tetkikler, sevk, kontrol planı') + '<div class="grid2">' + '<label class="field"><span>Kontrol tarihi</span><input type="date" name="kontrol" data-f="kontrol" value="' + esc(f.data.kontrol || '') + '" min="2000-01-01"></label>' + '</div>' +
+        '<label class="check"><input type="checkbox" data-f="kontrolHatirlat"' + (f.data.kontrolHatirlat ? ' checked' : '') + '>Kontrol günü için hatırlatma kur (bir gün önce bildirim)</label>') +
       panel('not', ta('onemliNot', 'Önemli not', 'Alerji, antikoagülan kullanımı, dikkat edilecek durum…') + '<p class="hint">Önemli not, hasta kartının en üstünde kırmızı kutuda gösterilir.</p>') +
       (f.mode === 'editVisit' ? '<p style="margin:16px 0 0"><button class="btn danger" type="button" data-act="deleteVisit">Bu viziti sil</button></p>' : '') +
       '</div>';
@@ -1023,12 +1213,15 @@
       const vid = uid();
       const v = visitFrom({ id: vid });
       S.db.patients[pid] = { id: pid, ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), createdAt: now, updatedAt: now, visits: { [vid]: v } };
+      applyKontrolReminder(S.db.patients[pid], vid, d);
     } else if (f.mode === 'newVisit') {
       const p = getPatient(pid); const vid = uid();
       p.visits = Object.assign({}, p.visits, { [vid]: visitFrom({ id: vid }) });
+      applyKontrolReminder(p, vid, d);
     } else if (f.mode === 'editVisit') {
       const p = getPatient(pid);
       p.visits = Object.assign({}, p.visits, { [f.visitId]: visitFrom(p.visits[f.visitId]) });
+      applyKontrolReminder(p, f.visitId, d);
     } else if (f.mode === 'editPatient') {
       const p = getPatient(pid);
       Object.assign(p, { ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), updatedAt: now });
@@ -1332,6 +1525,15 @@
         '<label class="check"><input type="checkbox" data-change="autoSync"' + (st.autoSyncOnUnlock ? ' checked' : '') + '>Defteri açınca otomatik eşitle</label>' +
         '<p class="small muted" id="syncStatus">' + esc(syncStatusText()) + '</p>' +
       '</section>' +
+      '<section class="set" id="setRem"><h3>Telefona bildirim</h3>' +
+        '<p class="muted">Hatırlatmalar Google hesabınızda ayrı bir “Poliklinik Defteri” takvimine eklenir; telefonunuzdaki Google Takvim bir gün önce bildirim gönderir. Uygulama yalnızca kendi oluşturduğu bu takvimi görebilir.</p>' +
+        '<label class="check"><input type="checkbox" data-change="calendarOn"' + (st.calendarOn ? ' checked' : '') + '>Hatırlatmaları telefona bildirim olarak gönder</label>' +
+        (st.calendarOn ? '<div class="grid2"><label class="field"><span>Varsayılan hatırlatma saati</span><input type="time" data-change="remTime" value="' + esc(st.remTime || '09:00') + '"></label></div>' +
+          '<label class="check"><input type="checkbox" data-change="calInitials"' + (st.calInitials ? ' checked' : '') + '>Bildirimde hastanın baş harfleri görünsün (örn. Ş.Y.)</label>' +
+          '<p class="notice small">Bildirim metni Google Takvim\'de saklanır ve kilit ekranında görünebilir. Ad soyad, TC ve telefon takvime hiç gönderilmez; hatırlatma notuna da yazmayın.</p>' +
+          '<div class="row-btns"><button class="btn primary" type="button" data-act="sync">' + (Drive.hasCalendar() ? 'Takvimi şimdi eşitle' : 'Google Takvim iznini ver ve eşitle') + '</button></div>' : '') +
+        '<p class="small muted" id="calStatus">' + esc(calStatusText()) + '</p>' +
+      '</section>' +
       '<section class="set"><h3>Otomatik kilit</h3>' +
         '<label class="field"><span>Bu süre boyunca işlem yapılmazsa defter kilitlenir</span><select data-change="lockMinutes">' + [1, 3, 5, 10, 15, 30].map(opt).join('') + '</select></label>' +
       '</section>' +
@@ -1361,11 +1563,12 @@
   }
 
   /* ================= diyaloglar ================= */
-  function dialog(html) {
+  function dialog(html, init) {
     return new Promise((resolve) => {
       $dlg.innerHTML = html;
       const form = $dlg.querySelector('form');
       const close = (val) => { $dlg.close(); resolve(val); };
+      if (init) init(form, close);
       $dlg.querySelectorAll('[data-dlg-cancel]').forEach((b) => b.addEventListener('click', () => close(null)));
       form.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -1431,6 +1634,7 @@
       if (!ok) return;
       const p = getPatient(f.patientId);
       p.visits = Object.assign({}, p.visits, { [f.visitId]: { id: f.visitId, deleted: true, updatedAt: Date.now() } });
+      applyKontrolReminder(p, f.visitId, {});
       await markChanged();
       S.form = null; toast('Vizit silindi.'); go('#/h/' + f.patientId);
     },
@@ -1442,12 +1646,17 @@
       if (!ok) return;
       const imgs = {};
       for (const iid of Object.keys(p.images || {})) { imgs[iid] = { id: iid, deleted: true, updatedAt: Date.now() }; await idb.del('img:' + iid).catch(() => {}); }
-      S.db.patients[p.id] = { id: p.id, deleted: true, updatedAt: Date.now(), visits: {}, images: imgs };
+      const rems = {};
+      for (const rid of Object.keys(p.reminders || {})) rems[rid] = { id: rid, deleted: true, updatedAt: Date.now() };
+      S.db.patients[p.id] = { id: p.id, deleted: true, updatedAt: Date.now(), visits: {}, images: imgs, reminders: rems };
       await markChanged();
       S.form = null; toast('Hasta silindi.'); go('#/');
     },
     saveClientId() { saveClientId(); },
     openImage(el) { openImageViewer(el.dataset.pid, el.dataset.iid); },
+    remAdd(el) { reminderDialog(el.dataset.pid, null); },
+    remEdit(el) { reminderDialog(el.dataset.pid, el.dataset.rid); },
+    remToggle(el) { toggleReminder(el.dataset.pid, el.dataset.rid); },
     advChip(el) {
       const f = el.dataset.field, v = el.dataset.val;
       const cur = trim(S.adv[f]);
@@ -1512,7 +1721,7 @@
     if (cid !== S.settings.clientId) { Drive.signOut(); S.settings.driveFileId = ''; S.settings.driveConnected = false; }
     S.settings.clientId = cid; await saveSettings();
     if (!cid) { refreshSyncState(); toast('İstemci kimliği silindi.'); return; }
-    try { await Drive.prepare(cid); toast('Kaydedildi. Şimdi “Google\'a bağlan ve eşitle”ye dokunun.'); }
+    try { await Drive.prepare(cid, S.settings.calendarOn); toast('Kaydedildi. Şimdi “Google\'a bağlan ve eşitle”ye dokunun.'); }
     catch (e) { toast(e.message, true); }
     refreshSyncState();
   }
@@ -1574,7 +1783,7 @@
       const cid = trim(form.cid.value);
       if (!/\.apps\.googleusercontent\.com$/.test(cid)) return renderSetup('İstemci kimliği “.apps.googleusercontent.com” ile bitmeli.');
       S.settings.clientId = cid; await saveSettings();
-      try { await Drive.prepare(cid); renderSetup(); }
+      try { await Drive.prepare(cid, S.settings.calendarOn); renderSetup(); }
       catch (e) { renderSetup(e.message); }
     },
     record() { saveForm(); },
@@ -1636,6 +1845,17 @@
       const n = await addImages(el.dataset.id, files, r.note);
       if (n) { renderMain(); toast(n + ' görüntü eklendi.'); }
     },
+    async calendarOn(el) {
+      if (el.checked && !S.settings.clientId) { el.checked = false; toast('Önce Google Drive eşitlemesini kurun.', true); return; }
+      S.settings.calendarOn = el.checked; S.calMsg = '';
+      if (!el.checked) { S.settings.calPushed = {}; }
+      await saveSettings();
+      try { await Drive.prepare(S.settings.clientId, S.settings.calendarOn); } catch (e) { toast(e.message, true); }
+      renderMain(); refreshSyncState();
+      if (el.checked) toast('Şimdi “Google Takvim iznini ver ve eşitle” düğmesine dokunun.');
+    },
+    async remTime(el) { if (el.value) { S.settings.remTime = el.value; await saveSettings(); } },
+    async calInitials(el) { S.settings.calInitials = el.checked; await saveSettings(); scheduleSync(); toast('Kaydedildi. Takvim bir sonraki eşitlemede güncellenir.'); },
     xlRange(el) { S.xl.range = el.value; refreshXl(); },
     xlFrom(el) { S.xl.from = el.value; refreshXl(); },
     xlTo(el) { S.xl.to = el.value; refreshXl(); },
@@ -1673,7 +1893,7 @@
       return;
     }
     if (!S.form || !el.dataset || !el.dataset.f) return;
-    S.form.data[el.dataset.f] = el.value;
+    S.form.data[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
     S.form.dirty = true;
     if (el.dataset.f === 'tc') checkTC();
     updateTabDots();

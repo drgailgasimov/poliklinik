@@ -110,11 +110,23 @@
   <tr><td>Eşitleme</td><td>Defteri açarken otomatik eşitlenir. Google oturumu açıkken (yaklaşık bir saat) her kayıttan birkaç saniye sonra da kendiliğinden eşitlenir; süre dolunca düğmeye bir kez dokunmanız yeterli. Düğmedeki nokta: yeşil = eşitlendi, turuncu = bekleyen değişiklik var (dokunun), kırmızı = hata (dokunun, mesajı okuyun).</td></tr>
   <tr><td>Kilit</td><td>5 dakika işlem yapılmazsa defter kendiliğinden kilitlenir (Ayarlar'dan değiştirilebilir). Yarım kalan form kaybolmaz; parolayı girince geri gelir.</td></tr>
   <tr><td>Yedek</td><td>Ayda bir <b>Ayarlar → Şifreli yedeği indir</b>. Dosyayı bilgisayarınızda ve bir USB bellekte saklayın.</td></tr>
+  <tr><td>Hatırlatma</td><td>Hasta kartı → <b>Hatırlatmalar → Hatırlatma ekle</b>: not, tarih, saat. Telefona bildirim açıksa bir gün önce bildirim gelir. Vizit formunda Plan sekmesindeki “Kontrol günü için hatırlatma kur” kutusu kontrol tarihine otomatik hatırlatma kurar. Listede <b>Hatırlatma</b> filtresi önümüzdeki 7 günü ve geçmiş olanları gösterir. İş bitince yuvarlağa dokunup tamamlayın; takvimden de silinir.</td></tr>
   <tr><td>Detaylı arama</td><td>Arama kutusunun yanındaki ayar simgesi veya <span class="k">Alt+F</span>. Tanı, ICD-10 kodu (M17 yazınca M17.0, M17.1… hepsi), tedavi (uygulanan / uygulanacak), şikayet, muayene, plan, önemli not, vizit tarihi, kontrol durumu (yaklaşan, gelmeyen) ve görüntüsü olanlara göre birlikte arar. Virgül “veya” demektir: <i>menisküs, kondromalazi</i>. Sık girilen tanı ve tedaviler hazır düğme olarak çıkar. Sonuçlar Excel'e aktarılabilir.</td></tr>
   <tr><td>Görüntü ekleme</td><td>Hasta kartı → <b>Görüntüler</b> → <b>Görüntü ekle</b> (galeriden, birden fazla seçilebilir) veya telefonda <b>Fotoğraf çek</b>. JPEG, PNG, HEIC, WebP, GIF ve AVIF desteklenir. Görüntüler küçültülüp şifrelenir, konum (GPS) bilgisi silinir. HEIC dosyaları olduğu gibi saklanır ve “İndir” ile galeride açılır.</td></tr>
   <tr><td>Excel'e aktarma</td><td><b>Ayarlar → Excel'e aktar</b>. Aralık seçin (bu ay, geçen ay, bu yıl, tümü veya tarih aralığı). Dosyada “Vizitler” ve “Hastalar” sayfaları olur. Excel dosyası şifresizdir; hastane dışına göndermeyin, işiniz bitince silin.</td></tr>
   <tr><td>Yazdırma</td><td>Hasta kartında <span class="k">Ctrl+P</span>. Çıktı logolu antetle basılır, düğmeler ve liste çıktıya girmez.</td></tr>
 </table>
+
+<h2><span class="n">5b</span>Telefona hatırlatma bildirimi (Google Takvim)</h2>
+<p>Hatırlatmalar Google hesabınızda ayrı bir “Poliklinik Defteri” takvimine eklenir. Telefonunuzdaki Google Takvim uygulaması bir gün önce (isterseniz o gün de) bildirim gönderir. Uygulama yalnızca kendi oluşturduğu bu takvimi görebilir; diğer takvimlerinize erişemez.</p>
+<ol>
+  <li><b>console.cloud.google.com</b> → üstte <b>My First Project</b> seçili → <b>APIs &amp; Services → Library</b> → “Google Calendar API” → <b>Enable</b>.</li>
+  <li><b>Google Auth Platform → Data Access → Add or remove scopes</b> → filtreye <code>calendar.app.created</code> yazın → satırı işaretleyin → <b>Update</b> → sayfa altında <b>Save</b>. Listede çıkmazsa “Manually add scopes” kutusuna <code>https://www.googleapis.com/auth/calendar.app.created</code> yapıştırıp <b>Add to table</b> deyin.</li>
+  <li>Bilgisayardaki uygulamada <b>Ayarlar → Telefona bildirim</b> → kutuyu işaretleyin → <b>Google Takvim iznini ver ve eşitle</b>. “Doğrulanmadı” ekranında <b>Devam Et</b>; izin ekranında takvim izninin kutusu işaretli olsun → <b>Devam</b>.</li>
+  <li>Aynısını telefondaki uygulamada da açın; böylece telefondan eklediğiniz hatırlatmalar da hemen takvime gider.</li>
+  <li>Telefonda <b>Google Takvim</b> uygulamasını açın → sol üst ☰ menü → “Poliklinik Defteri” takviminin işaretli olduğunu kontrol edin. Görünmüyorsa: ☰ → Ayarlar → hesabınız → <b>Poliklinik Defteri</b> → <b>Senkronize et</b> açık. Telefon ayarlarında Google Takvim'in bildirim izni açık olmalı.</li>
+</ol>
+<div class="box warn"><p>Bildirim metni Google Takvim'de saklanır ve kilit ekranında görünebilir. Hasta adı, TC ve telefon takvime hiç gönderilmez; hatırlatma notuna da yazmayın. Bildirime dokununca etkinlikteki bağlantıdan hasta kartı açılır. İsterseniz Ayarlar'dan yalnızca baş harflerin (Ş.Y.) görünmesini açabilirsiniz.</p></div>
 
 <h2><span class="n">6</span>Güvenlik ve KVKK notları</h2>
 <ul>
