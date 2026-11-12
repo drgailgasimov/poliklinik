@@ -92,11 +92,12 @@
     if (!db || typeof db !== 'object') return emptyDB();
     const out = { schema: 1, patients: {}, keys: Object.assign({}, db.keys || {}) };
     if (db.cal && db.cal.id) out.cal = Object.assign({}, db.cal);
+    if (db.tpls && Array.isArray(db.tpls.list)) out.tpls = { updatedAt: db.tpls.updatedAt || 0, list: db.tpls.list.map((t) => Object.assign({}, t, { steps: (t.steps || []).slice() })) };
     const src = db.patients || {};
     for (const id of Object.keys(src)) {
       const p = src[id];
       if (!p || !p.id) continue;
-      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}), images: Object.assign({}, p.images || {}), reminders: Object.assign({}, p.reminders || {}) });
+      out.patients[id] = Object.assign({}, p, { visits: Object.assign({}, p.visits || {}), images: Object.assign({}, p.images || {}), reminders: Object.assign({}, p.reminders || {}), msgs: Object.assign({}, p.msgs || {}) });
     }
     return out;
   }
@@ -132,6 +133,8 @@
     // Görüntü anahtarları hiçbir zaman silinmez; iki cihazınkiler birleştirilir.
     out.keys = Object.assign({}, b.keys, a.keys);
     const ca = a.cal, cb = b.cal;
+    const ta = a.tpls, tb = b.tpls;
+    if (ta || tb) out.tpls = !ta ? tb : !tb ? ta : ((tb.updatedAt || 0) > (ta.updatedAt || 0) ? tb : ta);
     if (ca || cb) out.cal = Object.assign({}, !ca ? cb : !cb ? ca : (cb.updatedAt || 0) > (ca.updatedAt || 0) ? cb : (cb.updatedAt || 0) < (ca.updatedAt || 0) ? ca : (ca.id < cb.id ? ca : cb));
     const ids = new Set(Object.keys(a.patients).concat(Object.keys(b.patients)));
     for (const id of ids) {
@@ -144,6 +147,7 @@
       p.visits = mergeMap(pa && pa.visits, pb && pb.visits);
       p.images = images;
       p.reminders = reminders;
+      p.msgs = mergeMap(pa && pa.msgs, pb && pb.msgs);
       out.patients[id] = p;
     }
     return out;

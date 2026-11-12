@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.0';
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
   const $dlg = document.getElementById('dlg');
@@ -112,6 +112,7 @@
     phone: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>',
     gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     lock: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+    wa: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.5 1 2.7.1.2 1.8 2.8 4.5 3.9 1.7.7 2.3.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.2-.3-.2-.5-.3z"/></svg>',
     sliders: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
     search: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     plus: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -279,6 +280,181 @@
     Drive.signIn(!S.settings.driveConnected).then(run).catch((e) => { setSync('error', e.message); toast(e.message, true); });
   }
 
+  /* ================= WhatsApp ================= */
+  const DOKTOR = 'Op. Dr. Gail Gasimov';
+  const DEFAULT_TPLS = [
+    { id: 'takip', name: 'Muayene sonrası takip', kind: 'seq', steps: [
+      'Merhaba {ad} {soyad}, iyi günler, geçmiş olsun. Hocamızın muayenesi sonrası şikayetlerinizde azalma var mı?',
+      'Teşekkür ederiz. Bu geçen sürede hocamıza iletmemizi istediğiniz bir durum var mıdır?'
+    ] },
+    { id: 'kontrol', name: 'Kontrol randevusu hatırlatma', kind: 'single', steps: [
+      'Merhaba {ad} {soyad}, {tarih} saat {saat} için ' + DOKTOR + ' kontrol randevunuzu hatırlatırız. Geçmiş olsun.'
+    ] },
+    { id: 'sonuc', name: 'Tetkik sonucu', kind: 'single', steps: [
+      'Merhaba {ad} {soyad}, tetkik sonuçlarınız hakkında bilgi vermek için yazıyoruz. Uygun olduğunuzda dönüş yapabilir misiniz?'
+    ] }
+  ];
+  function tplList() { return (S.db && S.db.tpls && S.db.tpls.list) || DEFAULT_TPLS; }
+  function tplById(id) { return tplList().find((t) => t.id === id) || null; }
+  function waNumber(tel) {
+    const n = PK.normPhone(tel);
+    return n.startsWith('+') ? n.slice(1) : '';
+  }
+  function fillTpl(text, p, r) {
+    const fd = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' });
+    const vals = {
+      ad: trim(p.ad), soyad: trim(p.soyad), doktor: DOKTOR,
+      tarih: r && r.date ? fd.format(new Date(r.date + 'T00:00:00')) : '',
+      saat: r && r.time ? r.time : ''
+    };
+    return String(text || '').replace(/\{(ad|soyad|doktor|tarih|saat)\}/g, (m, k) => vals[k]).replace(/ {2,}/g, ' ').replace(/ ,/g, ',');
+  }
+  function waLink(p, text) { return 'https://wa.me/' + waNumber(p.tel) + (text ? '?text=' + encodeURIComponent(text) : ''); }
+  function waDueDate(r) { return new Date(new Date(r.date + 'T00:00:00').getTime() - 86400000); }
+  /* Takip durumu: sıradaki adım, toplam adım */
+  function waState(r) {
+    if (!r || !r.wa || r.deleted) return null;
+    const t = tplById(r.wa.tplId);
+    const total = t ? t.steps.length : 0;
+    const sent = (r.wa.sent || []).length;
+    return { t, total, sent, next: sent < total && !r.wa.closed ? sent : -1, closed: !!r.wa.closed || (total > 0 && sent >= total) };
+  }
+  function waPending() {
+    const t0 = startOfDay(Date.now());
+    const out = [];
+    for (const x of livePatients()) for (const r of Object.values(x.p.reminders || {})) {
+      const w = waState(r);
+      if (!w || w.closed || !w.t) continue;
+      if (waDueDate(r).getTime() <= t0 || w.sent > 0) out.push({ x, r, w });
+    }
+    return out;
+  }
+
+  /* Mesaj penceresi: metin düzenlenir, "WhatsApp'ta aç" bağlantısı WhatsApp'ı açar. */
+  function waDialog(opts) {
+    const p = getPatient(opts.pid); if (!p) return;
+    const num = waNumber(p.tel);
+    if (!trim(p.tel)) { toast('Bu hastanın telefon numarası kayıtlı değil.', true); return; }
+    if (!num) { toast('Telefon numarası uluslararası biçimde değil. Yabancı numarayı +ülke koduyla yazın (Kimliği düzenle).', true); return; }
+    const r = opts.rid ? p.reminders[opts.rid] : null;
+    const tpls = tplList();
+    const opt = tpls.map((t) => '<option value="' + esc(t.id) + '"' + (opts.tplId === t.id ? ' selected' : '') + '>' + esc(t.name) + (t.kind === 'seq' ? ' (1. mesaj)' : '') + '</option>').join('');
+    const initial = opts.text != null ? opts.text : '';
+    $dlg.innerHTML = '<form method="dialog" class="wa-dlg"><h3>' + esc(opts.title || 'WhatsApp mesajı') + '</h3>' +
+      '<p class="muted">' + esc(fullName(p)) + ', ' + esc(PK.fmtPhone(p.tel)) + '</p>' +
+      (opts.askAnswer ? '<label class="field"><span>Hastanın önceki cevabı (isteğe bağlı, hasta kartına not olarak kaydedilir)</span><textarea name="answer" rows="2" placeholder="Örn. Ağrı azaldı, gece ağrısı sürüyor"></textarea></label>' : '') +
+      (opts.fixed ? '' : '<label class="field"><span>Şablon</span><select name="tpl"><option value="">Şablonsuz</option>' + opt + '</select></label>') +
+      '<label class="field"><span>Mesaj</span><textarea name="text" rows="5">' + esc(initial) + '</textarea></label>' +
+      '<p class="hint">WhatsApp mesajı hazır yazılmış olarak açar; göndermek için WhatsApp\'ta gönder düğmesine basın.</p>' +
+      '<div class="acts"><button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button>' +
+      '<a class="btn wa-btn" target="_blank" rel="noopener noreferrer" data-wa-go href="#">' + IC.wa + 'WhatsApp\'ta aç</a></div></form>';
+    const form = $dlg.querySelector('form');
+    const ta = form.text, go = form.querySelector('[data-wa-go]');
+    const upd = () => { go.href = waLink(p, ta.value); };
+    if (!opts.fixed) form.tpl.addEventListener('change', () => { const t = tplById(form.tpl.value); ta.value = t ? fillTpl(t.steps[0], p, r) : ''; upd(); });
+    ta.addEventListener('input', upd);
+    upd();
+    form.querySelector('[data-dlg-cancel]').addEventListener('click', () => $dlg.close());
+    form.addEventListener('submit', (e) => e.preventDefault());
+    go.addEventListener('click', () => {
+      const text = ta.value, answer = form.answer ? trim(form.answer.value) : '';
+      setTimeout(() => { $dlg.close(); logWa(opts.pid, { text, tplId: opts.fixed ? opts.tplId : (form.tpl.value || ''), rid: opts.rid, step: opts.step, answer }); }, 50);
+    });
+    $dlg.showModal();
+    ta.focus();
+  }
+  async function logWa(pid, m) {
+    const p = getPatient(pid); if (!p) return;
+    const now = Date.now();
+    const id = uid();
+    p.msgs = Object.assign({}, p.msgs, { [id]: { id, at: now, text: m.text, tplId: m.tplId || '', rid: m.rid || '', step: m.step == null ? null : m.step, updatedAt: now } });
+    if (m.rid && m.step != null && p.reminders[m.rid] && p.reminders[m.rid].wa) {
+      const r = p.reminders[m.rid];
+      const wa = Object.assign({}, r.wa, { sent: (r.wa.sent || []).concat([{ step: m.step, at: now }]), answers: (r.wa.answers || []).slice() });
+      if (m.answer) wa.answers[m.step - 1] = m.answer;
+      const w = waState(Object.assign({}, r, { wa }));
+      p.reminders = Object.assign({}, p.reminders, { [r.id]: Object.assign({}, r, { wa, updatedAt: now }) });
+      await markChanged(); renderMain(); renderList();
+      toast(w.closed ? 'Takip tamamlandı.' : (m.step + 1) + '. mesaj işaretlendi. Hasta cevap verince sıradaki soruyu gönderin.');
+      return;
+    }
+    await markChanged(); renderMain();
+  }
+  function waFollowupStart(pid, rid) {
+    const p = getPatient(pid), r = p && p.reminders[rid]; const w = waState(r);
+    if (!w || w.next < 0) return;
+    waDialog({ pid, rid, tplId: r.wa.tplId, step: w.next, fixed: true, askAnswer: w.next > 0,
+      title: w.t.name + ': ' + (w.next + 1) + '. mesaj' + (w.total > 1 ? ' / ' + w.total : ''),
+      text: fillTpl(w.t.steps[w.next], p, r) });
+  }
+  async function waClose(pid, rid) {
+    const p = getPatient(pid), r = p && p.reminders[rid]; if (!r || !r.wa) return;
+    const ans = await dialog('<form method="dialog"><h3>Takibi kapat</h3><p>' + esc(fullName(p)) + ' için WhatsApp takibi kapatılsın mı?</p>' +
+      '<label class="field"><span>Son cevap veya not (isteğe bağlı)</span><textarea name="answer" rows="2"></textarea></label>' +
+      '<div class="acts"><button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Takibi kapat</button></div></form>');
+    if (!ans) return;
+    const wa = Object.assign({}, r.wa, { closed: true, answers: (r.wa.answers || []).slice() });
+    if (trim(ans.answer)) wa.answers[(r.wa.sent || []).length - 1 >= 0 ? (r.wa.sent || []).length - 1 : 0] = trim(ans.answer);
+    p.reminders = Object.assign({}, p.reminders, { [rid]: Object.assign({}, r, { wa, updatedAt: Date.now() }) });
+    await markChanged(); renderMain(); renderList(); toast('Takip kapatıldı.');
+  }
+  function waReminderBlock(p, r) {
+    const w = waState(r); if (!w) return '';
+    if (!w.t) return '<div class="wa-line"><span class="muted small">WhatsApp şablonu silinmiş.</span></div>';
+    const fd = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const sent = (r.wa.sent || []).map((s, i) => '<li>' + (s.step + 1) + '. mesaj gönderildi, ' + esc(fd.format(s.at)) + ((r.wa.answers || [])[i] ? '<br><span class="wa-ans">Cevap: ' + esc(r.wa.answers[i]) + '</span>' : '') + '</li>').join('');
+    const due = waDueDate(r);
+    let actions = '';
+    if (!w.closed && w.next >= 0 && !trim(p.tel)) {
+      actions = '<p class="hint warn" style="margin:0">Telefon kayıtlı değil. Kimliği düzenle ile telefon ekleyin.</p>';
+    } else if (!w.closed && w.next >= 0) {
+      const lbl = w.next === 0 ? '1. mesajı gönder' : 'Cevap geldi: ' + (w.next + 1) + '. mesajı gönder';
+      actions = '<div class="wa-acts"><button class="btn wa-btn sm" type="button" data-act="waNext" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">' + IC.wa + lbl + '</button>' +
+        '<button class="link" type="button" data-act="waClose" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Takibi kapat</button></div>';
+    }
+    const head = w.closed ? 'WhatsApp takibi tamamlandı' : w.sent === 0 ? 'WhatsApp: ' + esc(w.t.name) + ', ' + esc(fShort.format(due)) + ' günü gönderilecek' : 'WhatsApp: ' + w.sent + '/' + w.total + ' gönderildi, cevap bekleniyor';
+    return '<div class="wa-line' + (w.closed ? ' closed' : '') + '"><span class="wa-head">' + IC.wa + head + '</span>' + (sent ? '<ul class="wa-log">' + sent + '</ul>' : '') + actions + '</div>';
+  }
+  function waHistory(p) {
+    const ms = Object.values(p.msgs || {}).filter((m) => !m.deleted).sort((a, b) => b.at - a.at);
+    if (!ms.length) return '';
+    const fd = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return '<details class="wa-hist"><summary>Gönderilen WhatsApp mesajları (' + ms.length + ')</summary><ul>' +
+      ms.slice(0, 30).map((m) => '<li><time>' + esc(fd.format(m.at)) + '</time><p>' + esc(m.text) + '</p></li>').join('') + '</ul></details>';
+  }
+
+  /* ---- şablon düzenleyici (Ayarlar) ---- */
+  function tplEditorHTML() {
+    const list = tplList();
+    return list.map((t, i) => '<div class="tpl" data-i="' + i + '">' +
+      '<div class="grid2"><label class="field"><span>Şablon adı</span><input data-tpl="name" value="' + esc(t.name) + '"></label>' +
+      '<label class="field"><span>Tür</span><select data-tpl="kind"><option value="single"' + (t.kind !== 'seq' ? ' selected' : '') + '>Tek mesaj</option><option value="seq"' + (t.kind === 'seq' ? ' selected' : '') + '>Soru-cevap takibi (sıralı mesajlar)</option></select></label></div>' +
+      t.steps.map((st, j) => '<label class="field"><span>' + (t.kind === 'seq' ? (j + 1) + '. mesaj' + (j > 0 ? ' (önceki cevaptan sonra)' : '') : 'Mesaj') + '</span><textarea data-tpl="step" data-j="' + j + '" rows="3">' + esc(st) + '</textarea></label>').join('') +
+      '<div class="row-btns">' + (t.kind === 'seq' ? '<button class="btn ghost sm" type="button" data-act="tplAddStep" data-i="' + i + '">' + IC.plus + 'Mesaj ekle</button>' + (t.steps.length > 1 ? '<button class="btn ghost sm" type="button" data-act="tplDelStep" data-i="' + i + '">Son mesajı çıkar</button>' : '') : '') +
+      '<button class="btn danger sm" type="button" data-act="tplDel" data-i="' + i + '">Şablonu sil</button></div></div>').join('') +
+      '<div class="row-btns"><button class="btn ghost" type="button" data-act="tplAdd">' + IC.plus + 'Yeni şablon</button><button class="btn primary" type="button" data-act="tplSave">Şablonları kaydet</button></div>';
+  }
+  function readTplEditor() {
+    const out = [];
+    document.querySelectorAll('#tplEditor .tpl').forEach((el) => {
+      const i = Number(el.dataset.i), old = tplList()[i] || {};
+      const kind = el.querySelector('[data-tpl=kind]').value;
+      let steps = Array.from(el.querySelectorAll('[data-tpl=step]')).map((x) => x.value);
+      if (kind !== 'seq') steps = steps.slice(0, 1);
+      out.push({ id: old.id || uid(), name: trim(el.querySelector('[data-tpl=name]').value) || 'Adsız şablon', kind, steps: steps.length ? steps : [''] });
+    });
+    return out;
+  }
+  function setTplDraft(list) {
+    S.tplDraft = list;
+    const box = document.getElementById('tplEditor');
+    if (!box) return;
+    const saved = S.db.tpls;
+    S.db.tpls = { updatedAt: saved ? saved.updatedAt : 0, list };
+    box.innerHTML = tplEditorHTML();
+    S.db.tpls = saved;
+  }
+
   /* ================= hatırlatmalar ================= */
   const remTs = (r) => new Date(r.date + 'T' + (r.time || '09:00') + ':00').getTime();
   function openReminders(p) {
@@ -312,7 +488,7 @@
       const late = !r.done && d < t0;
       return '<li class="rem' + (r.done ? ' done' : '') + (late ? ' late' : '') + '">' +
         '<button class="rem-check" type="button" data-act="remToggle" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '" aria-pressed="' + !!r.done + '" aria-label="' + (r.done ? 'Tamamlanmadı olarak işaretle' : 'Tamamlandı olarak işaretle') + '"></button>' +
-        '<div class="rem-body"><b>' + esc(r.note) + '</b><span>' + esc(remDayLabel(r)) + (remDayLabel(r).match(/^(Bugün|Dün|Yarın)$/) ? ', ' + esc(fFull.format(d)) : '') + ', ' + esc(r.time || '09:00') + (late ? ' (geçti)' : '') + '</span></div>' +
+        '<div class="rem-body"><b>' + esc(r.note) + '</b><span>' + esc(remDayLabel(r)) + (remDayLabel(r).match(/^(Bugün|Dün|Yarın)$/) ? ', ' + esc(fFull.format(d)) : '') + ', ' + esc(r.time || '09:00') + (late ? ' (geçti)' : '') + '</span>' + waReminderBlock(p, r) + '</div>' +
         '<button class="link" type="button" data-act="remEdit" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Düzenle</button></li>';
     };
     return '<section class="reminders" aria-labelledby="remH">' +
@@ -320,6 +496,7 @@
       '<button class="btn ghost" type="button" data-act="remAdd" data-pid="' + esc(p.id) + '">' + IC.plus + 'Hatırlatma ekle</button></div>' +
       (open.length ? '<ul class="rem-list">' + open.map(item).join('') + '</ul>' : '<p class="muted small">İleri tarihli bir iş için hatırlatma ekleyin: tahlil sonucu sorma, kontrol araması, ameliyat hazırlığı gibi.' + (S.settings.calendarOn ? ' Bildirim bir gün önce telefonunuza gelir.' : ' Telefona bildirim için Ayarlar → Telefona bildirim bölümünü açın.') + '</p>') +
       (done.length ? '<details class="rem-done"><summary>Tamamlananlar (' + done.length + ')</summary><ul class="rem-list">' + done.slice(0, 20).map(item).join('') + '</ul></details>' : '') +
+      waHistory(p) +
       '</section>';
   }
 
@@ -332,6 +509,9 @@
       '<div class="grid2"><label class="field"><span>Tarih</span><input type="date" name="date" required value="' + esc(r ? r.date : tomorrowISO()) + '"></label>' +
       '<label class="field"><span>Saat</span><input type="time" name="time" required value="' + esc(r ? (r.time || st.remTime) : st.remTime) + '"></label></div>' +
       '<label class="check"><input type="checkbox" name="both"' + (!r || r.both ? ' checked' : '') + '>Bir gün önce ve o gün, saatinde bildir (işaretsizse yalnızca bir gün önce)</label>' +
+      '<label class="field"><span>Bir gün önce WhatsApp mesajı</span><select name="wa"><option value="">Gönderme</option>' +
+        tplList().map((t) => '<option value="' + esc(t.id) + '"' + (r && r.wa && r.wa.tplId === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>').join('') + '</select></label>' +
+      (trim(p.tel) ? '' : '<p class="hint warn">Bu hastanın telefonu kayıtlı değil; WhatsApp mesajı için önce telefonu ekleyin.</p>') +
       (st.calendarOn ? '<p class="hint">Bildirim metni Google Takvim\'de görünür. Nota hasta adı, TC veya telefon yazmayın; bildirime dokununca hasta kartı açılır.</p>' : '<p class="hint">Telefona bildirim kapalı. Hatırlatma yalnızca uygulamada görünür. Açmak için: Ayarlar → Telefona bildirim.</p>') +
       '<div class="acts">' + (r ? '<button class="btn danger" type="button" data-dlg-del style="margin-right:auto">Sil</button>' : '') +
       '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Kaydet</button></div></form>',
@@ -347,7 +527,10 @@
     if (!trim(res.note) || !res.date) return;
     const id = rid || uid();
     const base = r ? Object.assign({}, r) : { id, createdAt: now, done: false };
-    cur.reminders = Object.assign({}, cur.reminders, { [id]: Object.assign(base, { note: trim(res.note), date: res.date, time: res.time || st.remTime, both: res.both === 'on', updatedAt: now }) });
+    const nb = Object.assign(base, { note: trim(res.note), date: res.date, time: res.time || st.remTime, both: res.both === 'on', updatedAt: now });
+    if (!res.wa) delete nb.wa;
+    else if (!nb.wa || nb.wa.tplId !== res.wa) nb.wa = { tplId: res.wa, sent: [], answers: [], closed: false };
+    cur.reminders = Object.assign({}, cur.reminders, { [id]: nb });
     await markChanged(); renderMain(); renderList();
     toast(r ? 'Hatırlatma güncellendi.' : 'Hatırlatma eklendi.' + (st.calendarOn ? (Drive.hasCalendar() ? '' : ' Telefona gitmesi için Eşitle\'ye dokunun.') : ''));
   }
@@ -361,10 +544,17 @@
   function applyKontrolReminder(p, vid, d) {
     const now = Date.now();
     const ex = Object.values(p.reminders || {}).find((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
-    if (d.kontrolHatirlat && d.kontrol) {
+    if ((d.kontrolHatirlat || d.kontrolWa) && d.kontrol) {
       const id = ex ? ex.id : uid();
       const base = ex ? Object.assign({}, ex) : { id, kind: 'kontrol', visitId: vid, note: 'Kontrol günü', time: S.settings.remTime, both: true, done: false, createdAt: now };
-      if (!ex || ex.date !== d.kontrol) p.reminders = Object.assign({}, p.reminders, { [id]: Object.assign(base, { date: d.kontrol, done: false, updatedAt: now }) });
+      const defTpl = (tplList().find((t) => t.kind === 'seq') || tplList()[0] || {}).id || '';
+      const wantWa = d.kontrolWa ? (d.kontrolWaTpl && tplById(d.kontrolWaTpl) ? d.kontrolWaTpl : defTpl) : '';
+      const curWa = ex && ex.wa ? ex.wa.tplId : '';
+      if (!ex || ex.date !== d.kontrol || wantWa !== curWa) {
+        const nb = Object.assign(base, { date: d.kontrol, done: false, updatedAt: now });
+        if (!wantWa) delete nb.wa; else if (!nb.wa || nb.wa.tplId !== wantWa) nb.wa = { tplId: wantWa, sent: [], answers: [], closed: false };
+        p.reminders = Object.assign({}, p.reminders, { [id]: nb });
+      }
     } else if (ex) {
       p.reminders = Object.assign({}, p.reminders, { [ex.id]: { id: ex.id, deleted: true, updatedAt: now } });
     }
@@ -379,8 +569,8 @@
     const link = location.origin + location.pathname + '#/h/' + p.id;
     const who = S.settings.calInitials ? initials(p) + ' ' : '';
     return {
-      summary: 'Hatırlatma: ' + who + trim(r.note).slice(0, 100),
-      description: 'Poliklinik Defteri hatırlatması.\nHasta kartını açmak için: ' + link,
+      summary: 'Hatırlatma: ' + who + trim(r.note).slice(0, 100) + (r.wa && !r.wa.closed ? ' (+WhatsApp mesajı)' : ''),
+      description: 'Poliklinik Defteri hatırlatması.' + (r.wa && !r.wa.closed ? '\nBugün hastaya WhatsApp takip mesajı gönderilecek: uygulamada hasta kartını açın.' : '') + '\nHasta kartını açmak için: ' + link,
       start: { dateTime: fmtLocal(start), timeZone: tz },
       end: { dateTime: fmtLocal(start + 15 * 60000), timeZone: tz },
       reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }].concat(r.both ? [{ method: 'popup', minutes: 0 }] : []) },
@@ -725,7 +915,9 @@
       if (c.late) parts.push(c.late + ' geçmiş');
       if (c.today) parts.push('bugün ' + c.today);
       if (c.tomorrow) parts.push('yarın ' + c.tomorrow);
-      if (parts.length) setTimeout(() => toast('Hatırlatmalar: ' + parts.join(', ') + '. Listede “Hatırlatma” filtresine bakın.'), 600);
+      const wp = waPending().filter((q) => q.w.sent === 0).length;
+      const msg = (parts.length ? 'Hatırlatmalar: ' + parts.join(', ') + '. ' : '') + (wp ? 'Gönderilecek ' + wp + ' WhatsApp mesajı var (WhatsApp filtresi).' : '');
+      if (msg) setTimeout(() => toast(msg), 600);
     }
   }
   async function openDraft(vault) {
@@ -894,8 +1086,11 @@
     const isNote = (x) => !!x.note;
     const in8 = t0 + 8 * 86400000;
     const isRem = (x) => !!x.nextRem && new Date(x.nextRem.date + 'T00:00:00').getTime() < in8;
-    const counts = { all: all.length, today: all.filter(isToday).length, rem: all.filter(isRem).length, kontrol: all.filter(isKontrol).length, note: all.filter(isNote).length };
-    const fl = [['all', 'Tümü'], ['today', 'Bugün'], ['rem', 'Hatırlatma'], ['kontrol', 'Kontrol'], ['note', 'Notlu']];
+    const pend = waPending();
+    const pendIds = new Map(); for (const q of pend) if (!pendIds.has(q.x.p.id)) pendIds.set(q.x.p.id, q);
+    const isMsg = (x) => pendIds.has(x.p.id);
+    const counts = { all: all.length, msg: pendIds.size, today: all.filter(isToday).length, rem: all.filter(isRem).length, kontrol: all.filter(isKontrol).length, note: all.filter(isNote).length };
+    const fl = [['all', 'Tümü'], ['today', 'Bugün'], ['rem', 'Hatırlatma']].concat(counts.msg || S.filter === 'msg' ? [['msg', 'WhatsApp']] : []).concat([['kontrol', 'Kontrol'], ['note', 'Notlu']]);
     $f.innerHTML = fl.map(([id, t]) => '<button type="button" data-act="filter" data-f="' + id + '" aria-pressed="' + (S.filter === id) + '">' + t + '<em>' + counts[id] + '</em></button>').join('');
 
     let items = all;
@@ -903,6 +1098,7 @@
     if (S.filter === 'kontrol') items = items.filter(isKontrol);
     if (S.filter === 'note') items = items.filter(isNote);
     if (S.filter === 'rem') items = items.filter((x) => !!x.nextRem);
+    if (S.filter === 'msg') items = items.filter(isMsg);
     const toks = PK.fold(S.query).split(/\s+/).filter(Boolean);
     if (toks.length) items = items.filter((x) => { const hs = haystack(x); return toks.every((t) => hs.includes(t)); });
 
@@ -927,7 +1123,15 @@
         '<span class="row-meta"><span>' + esc(metaTop) + '</span>' + (x.note ? '<span class="flag" title="Önemli not var" aria-label="Önemli not var"></span>' : '') + chip + '</span></a>';
     };
     let html = '';
-    if (S.filter === 'rem') {
+    if (S.filter === 'msg') {
+      items.sort((a, b) => remTs(pendIds.get(a.p.id).r) - remTs(pendIds.get(b.p.id).r));
+      html += '<h3 class="group-h">Gönderilecek / cevap beklenen</h3>';
+      for (const x of items) {
+        const q = pendIds.get(x.p.id);
+        const sub = q.w.sent === 0 ? q.w.t.name + ': 1. mesaj gönderilecek' : q.w.t.name + ': ' + q.w.sent + '/' + q.w.total + ', cevap bekleniyor';
+        html += row(x, fShort.format(waDueDate(q.r)), sub);
+      }
+    } else if (S.filter === 'rem') {
       items.sort((a, b) => remTs(a.nextRem) - remTs(b.nextRem));
       let g = '';
       for (const x of items) {
@@ -1027,6 +1231,7 @@
         '<h2 class="p-name">' + esc(fullName(p)) + '</h2>' +
         '<div class="p-ids">' + tcHtml + '<span>Kayıt ' + esc(fFull.format(p.createdAt || Date.now())) + '</span><span>' + x.vs.length + ' vizit</span></div>' +
         '<div class="p-actions">' + call +
+          (tel ? '<button class="btn wa-btn" type="button" data-act="waOpen" data-pid="' + esc(p.id) + '">' + IC.wa + 'WhatsApp</button>' : '') +
           '<a class="btn primary" href="#/h/' + esc(p.id) + '/vizit">' + IC.plus + 'Yeni vizit</a>' +
           '<a class="btn ghost" href="#/h/' + esc(p.id) + '/kimlik">Kimliği düzenle</a>' +
         '</div>' +
@@ -1067,8 +1272,8 @@
     }
     if (mode === 'editVisit') {
       const p0 = getPatient(pid), v = p0.visits[vid];
-      const hasRem = Object.values(p0.reminders || {}).some((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
-      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih), kontrolHatirlat: hasRem });
+      const kr = Object.values(p0.reminders || {}).find((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
+      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih), kontrolHatirlat: !!kr, kontrolWa: !!(kr && kr.wa), kontrolWaTpl: kr && kr.wa ? kr.wa.tplId : 'takip' });
     }
     if (mode === 'editPatient') {
       const p = getPatient(pid);
@@ -1109,7 +1314,9 @@
       panel('tani', ta('tani', 'Tanı', 'Örn. Sağ diz medial menisküs yırtığı') + '<div class="grid2">' + inp('icd', 'ICD-10 kodu (isteğe bağlı)', 'autocomplete="off" spellcheck="false" placeholder="M23.2"') + '</div>') +
       panel('tedavi', ta('tedaviUygulanan', 'Uygulanan tedavi', 'Bugün yapılanlar: ilaç, enjeksiyon, atel…') + ta('tedaviPlanlanan', 'Uygulanacak tedavi', 'Planlanan tedavi, cerrahi…')) +
       panel('plan', ta('plan', 'Plan', 'Tetkikler, sevk, kontrol planı') + '<div class="grid2">' + '<label class="field"><span>Kontrol tarihi</span><input type="date" name="kontrol" data-f="kontrol" value="' + esc(f.data.kontrol || '') + '" min="2000-01-01"></label>' + '</div>' +
-        '<label class="check"><input type="checkbox" data-f="kontrolHatirlat"' + (f.data.kontrolHatirlat ? ' checked' : '') + '>Kontrol günü için hatırlatma kur (bir gün önce bildirim)</label>') +
+        '<label class="check"><input type="checkbox" data-f="kontrolHatirlat"' + (f.data.kontrolHatirlat ? ' checked' : '') + '>Kontrol günü için hatırlatma kur (bir gün önce bildirim)</label>' +
+        '<label class="check"><input type="checkbox" data-f="kontrolWa"' + (f.data.kontrolWa ? ' checked' : '') + '>Bir gün önce WhatsApp takip mesajı hazırla</label>' +
+        '<label class="field wa-tpl-pick"><span>WhatsApp şablonu</span><select data-f="kontrolWaTpl">' + tplList().map((t) => '<option value="' + esc(t.id) + '"' + ((f.data.kontrolWaTpl || 'takip') === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>').join('') + '</select></label>') +
       panel('not', ta('onemliNot', 'Önemli not', 'Alerji, antikoagülan kullanımı, dikkat edilecek durum…') + '<p class="hint">Önemli not, hasta kartının en üstünde kırmızı kutuda gösterilir.</p>') +
       (f.mode === 'editVisit' ? '<p style="margin:16px 0 0"><button class="btn danger" type="button" data-act="deleteVisit">Bu viziti sil</button></p>' : '') +
       '</div>';
@@ -1534,6 +1741,10 @@
           '<div class="row-btns"><button class="btn primary" type="button" data-act="sync">' + (Drive.hasCalendar() ? 'Takvimi şimdi eşitle' : 'Google Takvim iznini ver ve eşitle') + '</button></div>' : '') +
         '<p class="small muted" id="calStatus">' + esc(calStatusText()) + '</p>' +
       '</section>' +
+      '<section class="set" id="setWa"><h3>WhatsApp mesaj şablonları</h3>' +
+        '<p class="muted">Şablonlarda şu alanlar hasta bilgisiyle doldurulur: {ad}, {soyad}, {tarih}, {saat} (hatırlatmanın tarihi ve saati), {doktor}. “Soru-cevap takibi” şablonunda mesajlar sırayla gönderilir; hasta cevap verince sıradaki soru için düğme çıkar.</p>' +
+        '<div id="tplEditor">' + tplEditorHTML() + '</div>' +
+      '</section>' +
       '<section class="set"><h3>Otomatik kilit</h3>' +
         '<label class="field"><span>Bu süre boyunca işlem yapılmazsa defter kilitlenir</span><select data-change="lockMinutes">' + [1, 3, 5, 10, 15, 30].map(opt).join('') + '</select></label>' +
       '</section>' +
@@ -1655,6 +1866,19 @@
     saveClientId() { saveClientId(); },
     openImage(el) { openImageViewer(el.dataset.pid, el.dataset.iid); },
     remAdd(el) { reminderDialog(el.dataset.pid, null); },
+    waOpen(el) { waDialog({ pid: el.dataset.pid, text: '' }); },
+    waNext(el) { waFollowupStart(el.dataset.pid, el.dataset.rid); },
+    waClose(el) { waClose(el.dataset.pid, el.dataset.rid); },
+    tplAdd() { const l = readTplEditor(); l.push({ id: uid(), name: 'Yeni şablon', kind: 'single', steps: ['Merhaba {ad} {soyad}, '] }); setTplDraft(l); },
+    tplDel(el) { const l = readTplEditor(); if (!confirm('“' + l[Number(el.dataset.i)].name + '” şablonu silinsin mi?')) return; l.splice(Number(el.dataset.i), 1); setTplDraft(l); },
+    tplAddStep(el) { const l = readTplEditor(); l[Number(el.dataset.i)].steps.push(''); setTplDraft(l); },
+    tplDelStep(el) { const l = readTplEditor(); l[Number(el.dataset.i)].steps.pop(); setTplDraft(l); },
+    async tplSave() {
+      const l = readTplEditor().map((t) => Object.assign(t, { steps: t.steps.map((x) => x.trim()) }));
+      if (l.some((t) => t.steps.some((x) => !x))) { toast('Boş mesaj kutusu var. Doldurun ya da çıkarın.', true); return; }
+      S.db.tpls = { updatedAt: Date.now(), list: l };
+      await markChanged(); toast('Şablonlar kaydedildi.'); renderMain();
+    },
     remEdit(el) { reminderDialog(el.dataset.pid, el.dataset.rid); },
     remToggle(el) { toggleReminder(el.dataset.pid, el.dataset.rid); },
     advChip(el) {
@@ -1877,6 +2101,13 @@
     if (fn) fn(form);
   });
   $app.addEventListener('change', (e) => {
+    if (e.target.dataset && e.target.dataset.tpl === 'kind') {
+      const l = readTplEditor();
+      const i = Number(e.target.closest('.tpl').dataset.i);
+      if (l[i].kind === 'seq' && l[i].steps.length < 2) l[i].steps.push('');
+      setTplDraft(l);
+      return;
+    }
     if (e.target.dataset && e.target.dataset.adv) {
       S.adv[e.target.dataset.adv] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       advRender();

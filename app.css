@@ -205,6 +205,30 @@ svg { flex: none; }
 .visit dd.note { color: var(--alert); font-weight: 500; }
 .icd { display: inline-block; font-size: 12px; font-weight: 600; background: var(--paper); border-radius: 6px; padding: 0 7px; margin-left: 6px; color: var(--deep); vertical-align: 1px; }
 
+/* ---------- WhatsApp ---------- */
+.wa-btn { background: #1F7A4D; color: #fff; border-color: transparent; }
+.wa-btn:hover { background: #18663F; }
+.btn.sm { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.wa-line { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #EAF5EF; display: grid; gap: 6px; font-size: 13px; }
+.wa-line.closed { background: var(--paper); }
+.wa-head { display: inline-flex; align-items: center; gap: 6px; color: #17603C; font-weight: 600; }
+.wa-line.closed .wa-head { color: var(--muted); }
+.wa-head svg { width: 16px; height: 16px; }
+.wa-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; color: var(--muted); }
+.wa-ans { color: var(--ink); font-style: italic; }
+.wa-acts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wa-hist { margin-top: 12px; }
+.wa-hist summary { cursor: pointer; font-size: 13.5px; color: var(--muted); padding: 4px 0; }
+.wa-hist ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.wa-hist li { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 12px; }
+.wa-hist time { font-size: 12px; color: var(--muted); }
+.wa-hist p { margin: 2px 0 0; white-space: pre-wrap; font-size: 14px; }
+.wa-dlg textarea { min-height: 110px; }
+.tpl { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px; display: grid; gap: 10px; background: var(--paper); }
+.tpl + .tpl { margin-top: 10px; }
+#tplEditor > .row-btns { margin-top: 12px; }
+.panel .check + .check { margin-top: -4px; }
+
 /* ---------- hatırlatmalar ---------- */
 .reminders { margin-bottom: 28px; }
 .reminders .visits-h { flex-wrap: wrap; gap: 10px; }
