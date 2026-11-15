@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
   const $dlg = document.getElementById('dlg');
@@ -35,7 +35,7 @@
     currentHash: '',
     xl: { range: 'month', from: '', to: '', ids: true },
     imgUrls: new Map(),
-    adv: { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false },
+    adv: { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false, yasMin: '', yasMax: '' },
     advTimer: null,
     imgBusy: false
   };
@@ -84,6 +84,14 @@
   const fShort = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' });
   const fTime = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
+  function ageOf(iso, at) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return null;
+    const d = new Date(at || Date.now());
+    let a = d.getFullYear() - +m[1];
+    if (d.getMonth() + 1 < +m[2] || (d.getMonth() + 1 === +m[2] && d.getDate() < +m[3])) a--;
+    return a >= 0 && a < 130 ? a : null;
+  }
+  function fmtDob(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? m[3] + '.' + m[2] + '.' + m[1] : ''; }
   function startOfDay(ts) { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
   function dayLabel(ts) {
     const t0 = startOfDay(Date.now()), d0 = startOfDay(ts);
@@ -310,7 +318,8 @@
     return String(text || '').replace(/\{(ad|soyad|doktor|tarih|saat)\}/g, (m, k) => vals[k]).replace(/ {2,}/g, ' ').replace(/ ,/g, ',');
   }
   function waLink(p, text) { return 'https://wa.me/' + waNumber(p.tel) + (text ? '?text=' + encodeURIComponent(text) : ''); }
-  function waDueDate(r) { return new Date(new Date(r.date + 'T00:00:00').getTime() - 86400000); }
+  /* Yeni takipler (kind 'wa') kendi tarihinde; eski sürümde hatırlatmaya bağlananlar bir gün önce */
+  function waDueDate(r) { const d = new Date(r.date + 'T00:00:00').getTime(); return new Date(r.kind === 'wa' ? d : d - 86400000); }
   /* Takip durumu: sıradaki adım, toplam adım */
   function waState(r) {
     if (!r || !r.wa || r.deleted) return null;
@@ -412,8 +421,48 @@
       actions = '<div class="wa-acts"><button class="btn wa-btn sm" type="button" data-act="waNext" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">' + IC.wa + lbl + '</button>' +
         '<button class="link" type="button" data-act="waClose" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Takibi kapat</button></div>';
     }
-    const head = w.closed ? 'WhatsApp takibi tamamlandı' : w.sent === 0 ? 'WhatsApp: ' + esc(w.t.name) + ', ' + esc(fShort.format(due)) + ' günü gönderilecek' : 'WhatsApp: ' + w.sent + '/' + w.total + ' gönderildi, cevap bekleniyor';
+    const head = w.closed ? 'WhatsApp takibi tamamlandı' : w.sent === 0 ? 'WhatsApp: ' + esc(w.t.name) + ', ' + esc(fShort.format(due)) + ' ' + esc(r.time || '') + ' gönderilecek' : 'WhatsApp: ' + w.sent + '/' + w.total + ' gönderildi, cevap bekleniyor';
     return '<div class="wa-line' + (w.closed ? ' closed' : '') + '"><span class="wa-head">' + IC.wa + head + '</span>' + (sent ? '<ul class="wa-log">' + sent + '</ul>' : '') + actions + '</div>';
+  }
+  function waSection(p) {
+    const items = Object.values(p.reminders || {}).filter((r) => !r.deleted && r.wa).sort((a, b) => waDueDate(a) - waDueDate(b));
+    const open = items.filter((r) => { const w = waState(r); return w && !w.closed; });
+    const closed = items.filter((r) => { const w = waState(r); return w && w.closed; });
+    const card = (r) => '<li class="wa-item">' + (r.kind !== 'wa' ? '<span class="muted small">' + esc(r.note) + '</span>' : '') + waReminderBlock(p, r) +
+      '<button class="link" type="button" data-act="waDel" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Takibi sil</button></li>';
+    return '<section class="wa-sec" aria-labelledby="waH">' +
+      '<div class="visits-h"><h3 id="waH">WhatsApp takibi' + (open.length ? ' <span class="count">' + open.length + '</span>' : '') + '</h3>' +
+      '<button class="btn ghost" type="button" data-act="waPlan" data-pid="' + esc(p.id) + '">' + IC.plus + 'Takip planla</button></div>' +
+      (open.length ? '<ul class="wa-items">' + open.map(card).join('') + '</ul>' : '<p class="muted small">Hastaya ileri bir tarihte WhatsApp takip mesajı göndermek için “Takip planla”. Mesajlar kendiliğinden gitmez; o gün listede “WhatsApp” filtresinde görünür, siz gönderirsiniz.</p>') +
+      (closed.length ? '<details class="rem-done"><summary>Tamamlanan takipler (' + closed.length + ')</summary><ul class="wa-items">' + closed.slice(0, 20).map(card).join('') + '</ul></details>' : '') +
+      waHistory(p) +
+      '</section>';
+  }
+  async function waPlanDialog(pid) {
+    const p = getPatient(pid); if (!p) return;
+    const tpls = tplList();
+    if (!tpls.length) { toast('Önce Ayarlar\'dan bir WhatsApp şablonu ekleyin.', true); return; }
+    const def = (tpls.find((t) => t.kind === 'seq') || tpls[0]).id;
+    const res = await dialog('<form method="dialog"><h3>WhatsApp takibi planla</h3><p class="muted">' + esc(fullName(p)) + (trim(p.tel) ? ', ' + esc(PK.fmtPhone(p.tel)) : '') + '</p>' +
+      (trim(p.tel) ? '' : '<p class="hint warn">Bu hastanın telefonu kayıtlı değil. Göndermeden önce Kimliği düzenle ile telefonu ekleyin.</p>') +
+      '<label class="field"><span>Şablon</span><select name="tpl">' + tpls.map((t) => '<option value="' + esc(t.id) + '"' + (t.id === def ? ' selected' : '') + '>' + esc(t.name) + (t.kind === 'seq' ? ' (' + t.steps.length + ' soru)' : '') + '</option>').join('') + '</select></label>' +
+      '<div class="grid2"><label class="field"><span>Mesajın gönderileceği gün</span><input type="date" name="date" required value="' + esc(tomorrowISO()) + '"></label>' +
+      '<label class="field"><span>Saat</span><input type="time" name="time" required value="' + esc(S.settings.remTime || '09:00') + '"></label></div>' +
+      '<p class="hint">Mesaj kendiliğinden gönderilmez. O gün size hatırlatılır ' + (S.settings.calendarOn ? '(telefona bildirim gelir) ' : '') + 've listede “WhatsApp” filtresinde görünür; gönder düğmesine siz basarsınız.</p>' +
+      '<div class="acts"><button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Planla</button></div></form>');
+    if (!res || !res.date || !tplById(res.tpl)) return;
+    const now = Date.now(), id = uid(), t = tplById(res.tpl);
+    const cur = getPatient(pid);
+    cur.reminders = Object.assign({}, cur.reminders, { [id]: { id, kind: 'wa', note: t.name, date: res.date, time: res.time || S.settings.remTime, both: false, done: false, createdAt: now, updatedAt: now, wa: { tplId: t.id, sent: [], answers: [], closed: false } } });
+    await markChanged(); renderMain(); renderList(); toast('WhatsApp takibi planlandı.');
+  }
+  async function waDelete(pid, rid) {
+    const p = getPatient(pid), r = p && p.reminders[rid]; if (!r) return;
+    if (!confirm('Bu WhatsApp takibi silinsin mi?')) return;
+    const now = Date.now();
+    if (r.kind === 'wa') p.reminders = Object.assign({}, p.reminders, { [rid]: { id: rid, deleted: true, updatedAt: now } });
+    else { const nr = Object.assign({}, r, { updatedAt: now }); delete nr.wa; p.reminders = Object.assign({}, p.reminders, { [rid]: nr }); }
+    await markChanged(); renderMain(); renderList(); toast('Takip silindi.');
   }
   function waHistory(p) {
     const ms = Object.values(p.msgs || {}).filter((m) => !m.deleted).sort((a, b) => b.at - a.at);
@@ -458,7 +507,7 @@
   /* ================= hatırlatmalar ================= */
   const remTs = (r) => new Date(r.date + 'T' + (r.time || '09:00') + ':00').getTime();
   function openReminders(p) {
-    return Object.values((p && p.reminders) || {}).filter((r) => !r.deleted && !r.done && r.date).sort((a, b) => remTs(a) - remTs(b));
+    return Object.values((p && p.reminders) || {}).filter((r) => !r.deleted && !r.done && r.date && r.kind !== 'wa').sort((a, b) => remTs(a) - remTs(b));
   }
   function remDayLabel(r) {
     const d = new Date(r.date + 'T00:00:00').getTime();
@@ -479,7 +528,7 @@
   function tomorrowISO() { const d = new Date(Date.now() + 86400000), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); }
 
   function remindersSection(p) {
-    const all = Object.values(p.reminders || {}).filter((r) => !r.deleted);
+    const all = Object.values(p.reminders || {}).filter((r) => !r.deleted && r.kind !== 'wa');
     const open = openReminders(p);
     const done = all.filter((r) => r.done).sort((a, b) => remTs(b) - remTs(a));
     const t0 = startOfDay(Date.now());
@@ -488,7 +537,7 @@
       const late = !r.done && d < t0;
       return '<li class="rem' + (r.done ? ' done' : '') + (late ? ' late' : '') + '">' +
         '<button class="rem-check" type="button" data-act="remToggle" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '" aria-pressed="' + !!r.done + '" aria-label="' + (r.done ? 'Tamamlanmadı olarak işaretle' : 'Tamamlandı olarak işaretle') + '"></button>' +
-        '<div class="rem-body"><b>' + esc(r.note) + '</b><span>' + esc(remDayLabel(r)) + (remDayLabel(r).match(/^(Bugün|Dün|Yarın)$/) ? ', ' + esc(fFull.format(d)) : '') + ', ' + esc(r.time || '09:00') + (late ? ' (geçti)' : '') + '</span>' + waReminderBlock(p, r) + '</div>' +
+        '<div class="rem-body"><b>' + esc(r.note) + '</b><span>' + esc(remDayLabel(r)) + (remDayLabel(r).match(/^(Bugün|Dün|Yarın)$/) ? ', ' + esc(fFull.format(d)) : '') + ', ' + esc(r.time || '09:00') + (late ? ' (geçti)' : '') + '</span></div>' +
         '<button class="link" type="button" data-act="remEdit" data-pid="' + esc(p.id) + '" data-rid="' + esc(r.id) + '">Düzenle</button></li>';
     };
     return '<section class="reminders" aria-labelledby="remH">' +
@@ -496,7 +545,6 @@
       '<button class="btn ghost" type="button" data-act="remAdd" data-pid="' + esc(p.id) + '">' + IC.plus + 'Hatırlatma ekle</button></div>' +
       (open.length ? '<ul class="rem-list">' + open.map(item).join('') + '</ul>' : '<p class="muted small">İleri tarihli bir iş için hatırlatma ekleyin: tahlil sonucu sorma, kontrol araması, ameliyat hazırlığı gibi.' + (S.settings.calendarOn ? ' Bildirim bir gün önce telefonunuza gelir.' : ' Telefona bildirim için Ayarlar → Telefona bildirim bölümünü açın.') + '</p>') +
       (done.length ? '<details class="rem-done"><summary>Tamamlananlar (' + done.length + ')</summary><ul class="rem-list">' + done.slice(0, 20).map(item).join('') + '</ul></details>' : '') +
-      waHistory(p) +
       '</section>';
   }
 
@@ -509,9 +557,7 @@
       '<div class="grid2"><label class="field"><span>Tarih</span><input type="date" name="date" required value="' + esc(r ? r.date : tomorrowISO()) + '"></label>' +
       '<label class="field"><span>Saat</span><input type="time" name="time" required value="' + esc(r ? (r.time || st.remTime) : st.remTime) + '"></label></div>' +
       '<label class="check"><input type="checkbox" name="both"' + (!r || r.both ? ' checked' : '') + '>Bir gün önce ve o gün, saatinde bildir (işaretsizse yalnızca bir gün önce)</label>' +
-      '<label class="field"><span>Bir gün önce WhatsApp mesajı</span><select name="wa"><option value="">Gönderme</option>' +
-        tplList().map((t) => '<option value="' + esc(t.id) + '"' + (r && r.wa && r.wa.tplId === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>').join('') + '</select></label>' +
-      (trim(p.tel) ? '' : '<p class="hint warn">Bu hastanın telefonu kayıtlı değil; WhatsApp mesajı için önce telefonu ekleyin.</p>') +
+      '<p class="hint">Bu hatırlatma yalnızca sizin içindir; hastaya mesaj gönderilmez.</p>' +
       (st.calendarOn ? '<p class="hint">Bildirim metni Google Takvim\'de görünür. Nota hasta adı, TC veya telefon yazmayın; bildirime dokununca hasta kartı açılır.</p>' : '<p class="hint">Telefona bildirim kapalı. Hatırlatma yalnızca uygulamada görünür. Açmak için: Ayarlar → Telefona bildirim.</p>') +
       '<div class="acts">' + (r ? '<button class="btn danger" type="button" data-dlg-del style="margin-right:auto">Sil</button>' : '') +
       '<button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button><button class="btn primary" type="submit">Kaydet</button></div></form>',
@@ -528,8 +574,6 @@
     const id = rid || uid();
     const base = r ? Object.assign({}, r) : { id, createdAt: now, done: false };
     const nb = Object.assign(base, { note: trim(res.note), date: res.date, time: res.time || st.remTime, both: res.both === 'on', updatedAt: now });
-    if (!res.wa) delete nb.wa;
-    else if (!nb.wa || nb.wa.tplId !== res.wa) nb.wa = { tplId: res.wa, sent: [], answers: [], closed: false };
     cur.reminders = Object.assign({}, cur.reminders, { [id]: nb });
     await markChanged(); renderMain(); renderList();
     toast(r ? 'Hatırlatma güncellendi.' : 'Hatırlatma eklendi.' + (st.calendarOn ? (Drive.hasCalendar() ? '' : ' Telefona gitmesi için Eşitle\'ye dokunun.') : ''));
@@ -544,17 +588,10 @@
   function applyKontrolReminder(p, vid, d) {
     const now = Date.now();
     const ex = Object.values(p.reminders || {}).find((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
-    if ((d.kontrolHatirlat || d.kontrolWa) && d.kontrol) {
+    if (d.kontrolHatirlat && d.kontrol) {
       const id = ex ? ex.id : uid();
       const base = ex ? Object.assign({}, ex) : { id, kind: 'kontrol', visitId: vid, note: 'Kontrol günü', time: S.settings.remTime, both: true, done: false, createdAt: now };
-      const defTpl = (tplList().find((t) => t.kind === 'seq') || tplList()[0] || {}).id || '';
-      const wantWa = d.kontrolWa ? (d.kontrolWaTpl && tplById(d.kontrolWaTpl) ? d.kontrolWaTpl : defTpl) : '';
-      const curWa = ex && ex.wa ? ex.wa.tplId : '';
-      if (!ex || ex.date !== d.kontrol || wantWa !== curWa) {
-        const nb = Object.assign(base, { date: d.kontrol, done: false, updatedAt: now });
-        if (!wantWa) delete nb.wa; else if (!nb.wa || nb.wa.tplId !== wantWa) nb.wa = { tplId: wantWa, sent: [], answers: [], closed: false };
-        p.reminders = Object.assign({}, p.reminders, { [id]: nb });
-      }
+      if (!ex || ex.date !== d.kontrol) p.reminders = Object.assign({}, p.reminders, { [id]: Object.assign(base, { date: d.kontrol, done: false, updatedAt: now }) });
     } else if (ex) {
       p.reminders = Object.assign({}, p.reminders, { [ex.id]: { id: ex.id, deleted: true, updatedAt: now } });
     }
@@ -569,11 +606,11 @@
     const link = location.origin + location.pathname + '#/h/' + p.id;
     const who = S.settings.calInitials ? initials(p) + ' ' : '';
     return {
-      summary: 'Hatırlatma: ' + who + trim(r.note).slice(0, 100) + (r.wa && !r.wa.closed ? ' (+WhatsApp mesajı)' : ''),
+      summary: (r.kind === 'wa' ? 'WhatsApp takip mesajı gönder: ' + who : 'Hatırlatma: ' + who + trim(r.note).slice(0, 100)) + (r.wa && !r.wa.closed && r.kind !== 'wa' ? ' (+WhatsApp mesajı)' : ''),
       description: 'Poliklinik Defteri hatırlatması.' + (r.wa && !r.wa.closed ? '\nBugün hastaya WhatsApp takip mesajı gönderilecek: uygulamada hasta kartını açın.' : '') + '\nHasta kartını açmak için: ' + link,
       start: { dateTime: fmtLocal(start), timeZone: tz },
       end: { dateTime: fmtLocal(start + 15 * 60000), timeZone: tz },
-      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 1440 }].concat(r.both ? [{ method: 'popup', minutes: 0 }] : []) },
+      reminders: { useDefault: false, overrides: r.kind === 'wa' ? [{ method: 'popup', minutes: 0 }] : [{ method: 'popup', minutes: 1440 }].concat(r.both ? [{ method: 'popup', minutes: 0 }] : []) },
       transparency: 'transparent',
       visibility: 'private'
     };
@@ -593,7 +630,7 @@
       for (const p of Object.values(S.db.patients)) for (const r of Object.values(p.reminders || {})) {
         if (!S.unlocked) return changed;
         const evId = evIdFor(r.id);
-        const live = !p.deleted && !r.deleted && !r.done && r.date;
+        const live = !p.deleted && !r.deleted && !r.done && r.date && !(r.kind === 'wa' && (!r.wa || r.wa.closed));
         if (!live) {
           if (pushed[r.id] !== 'x') { await Drive.calDelete(cal.id, evId); pushed[r.id] = 'x'; n++; }
           continue;
@@ -1229,7 +1266,7 @@
       '<article class="patient">' +
       '<header class="p-head">' +
         '<h2 class="p-name">' + esc(fullName(p)) + '</h2>' +
-        '<div class="p-ids">' + tcHtml + '<span>Kayıt ' + esc(fFull.format(p.createdAt || Date.now())) + '</span><span>' + x.vs.length + ' vizit</span></div>' +
+        '<div class="p-ids">' + tcHtml + (p.dogum ? '<span>Doğum <b>' + esc(fmtDob(p.dogum)) + '</b>' + (ageOf(p.dogum) != null ? ', ' + ageOf(p.dogum) + ' yaş' : '') + '</span>' : '') + '<span>Kayıt ' + esc(fFull.format(p.createdAt || Date.now())) + '</span><span>' + x.vs.length + ' vizit</span></div>' +
         '<div class="p-actions">' + call +
           (tel ? '<button class="btn wa-btn" type="button" data-act="waOpen" data-pid="' + esc(p.id) + '">' + IC.wa + 'WhatsApp</button>' : '') +
           '<a class="btn primary" href="#/h/' + esc(p.id) + '/vizit">' + IC.plus + 'Yeni vizit</a>' +
@@ -1238,6 +1275,7 @@
       '</header>' +
       (x.note ? '<aside class="alert-box"><h4>Önemli not</h4><p>' + esc(x.note) + '</p></aside>' : '') +
       remindersSection(p) +
+      waSection(p) +
       imagesSection(p) +
       '<div class="visits-h"><h3>Vizitler</h3></div>' +
       (visits ? '<ol class="visits">' + visits + '</ol>' : '<div class="empty"><p>Bu hastaya ait vizit yok.</p></div>') +
@@ -1273,11 +1311,11 @@
     if (mode === 'editVisit') {
       const p0 = getPatient(pid), v = p0.visits[vid];
       const kr = Object.values(p0.reminders || {}).find((r) => !r.deleted && r.visitId === vid && r.kind === 'kontrol');
-      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih), kontrolHatirlat: !!kr, kontrolWa: !!(kr && kr.wa), kontrolWaTpl: kr && kr.wa ? kr.wa.tplId : 'takip' });
+      f.data = Object.assign({}, v, { tarih: toLocalInput(v.tarih), kontrolHatirlat: !!kr });
     }
     if (mode === 'editPatient') {
       const p = getPatient(pid);
-      f.data = { ad: p.ad || '', soyad: p.soyad || '', tc: p.tc || '', tel: p.tel || '' };
+      f.data = { ad: p.ad || '', soyad: p.soyad || '', tc: p.tc || '', tel: p.tel || '', dogum: p.dogum || '' };
     }
     S.form = f;
     return f;
@@ -1297,6 +1335,7 @@
       inp('soyad', 'Soyad', 'autocomplete="off" spellcheck="false" autocapitalize="words"') +
       '<div class="field"><label class="field"><span>TC kimlik no</span><input name="tc" data-f="tc" value="' + esc(S.form.data.tc || '') + '" inputmode="numeric" maxlength="20" autocomplete="off" spellcheck="false"></label><span class="hint" id="tcHint">Yabancı hastada pasaport numarası da yazılabilir.</span></div>' +
       inp('tel', 'Telefon', 'type="tel" inputmode="tel" autocomplete="off" placeholder="0532 123 45 67"') +
+      '<label class="field"><span>Doğum tarihi</span><input type="date" name="dogum" data-f="dogum" value="' + esc(S.form.data.dogum || '') + '" min="1900-01-01" max="' + todayISO() + '"></label>' +
       '</div><div id="dupBox" class="dup"></div>' +
       (withDelete ? '<p style="margin:14px 0 0"><button class="btn danger" type="button" data-act="deletePatient">Hastayı ve tüm vizitlerini sil</button></p>' : '') +
       '</div>';
@@ -1315,8 +1354,7 @@
       panel('tedavi', ta('tedaviUygulanan', 'Uygulanan tedavi', 'Bugün yapılanlar: ilaç, enjeksiyon, atel…') + ta('tedaviPlanlanan', 'Uygulanacak tedavi', 'Planlanan tedavi, cerrahi…')) +
       panel('plan', ta('plan', 'Plan', 'Tetkikler, sevk, kontrol planı') + '<div class="grid2">' + '<label class="field"><span>Kontrol tarihi</span><input type="date" name="kontrol" data-f="kontrol" value="' + esc(f.data.kontrol || '') + '" min="2000-01-01"></label>' + '</div>' +
         '<label class="check"><input type="checkbox" data-f="kontrolHatirlat"' + (f.data.kontrolHatirlat ? ' checked' : '') + '>Kontrol günü için hatırlatma kur (bir gün önce bildirim)</label>' +
-        '<label class="check"><input type="checkbox" data-f="kontrolWa"' + (f.data.kontrolWa ? ' checked' : '') + '>Bir gün önce WhatsApp takip mesajı hazırla</label>' +
-        '<label class="field wa-tpl-pick"><span>WhatsApp şablonu</span><select data-f="kontrolWaTpl">' + tplList().map((t) => '<option value="' + esc(t.id) + '"' + ((f.data.kontrolWaTpl || 'takip') === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>').join('') + '</select></label>') +
+        '') +
       panel('not', ta('onemliNot', 'Önemli not', 'Alerji, antikoagülan kullanımı, dikkat edilecek durum…') + '<p class="hint">Önemli not, hasta kartının en üstünde kırmızı kutuda gösterilir.</p>') +
       (f.mode === 'editVisit' ? '<p style="margin:16px 0 0"><button class="btn danger" type="button" data-act="deleteVisit">Bu viziti sil</button></p>' : '') +
       '</div>';
@@ -1419,7 +1457,7 @@
       pid = uid();
       const vid = uid();
       const v = visitFrom({ id: vid });
-      S.db.patients[pid] = { id: pid, ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), createdAt: now, updatedAt: now, visits: { [vid]: v } };
+      S.db.patients[pid] = { id: pid, ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), dogum: d.dogum || '', createdAt: now, updatedAt: now, visits: { [vid]: v } };
       applyKontrolReminder(S.db.patients[pid], vid, d);
     } else if (f.mode === 'newVisit') {
       const p = getPatient(pid); const vid = uid();
@@ -1431,7 +1469,7 @@
       applyKontrolReminder(p, f.visitId, d);
     } else if (f.mode === 'editPatient') {
       const p = getPatient(pid);
-      Object.assign(p, { ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), updatedAt: now });
+      Object.assign(p, { ad: trim(d.ad), soyad: trim(d.soyad), tc: trim(d.tc).replace(/\s/g, ''), tel: trim(d.tel), dogum: d.dogum || '', updatedAt: now });
     }
     try {
       await markChanged();
@@ -1524,7 +1562,8 @@
     const letterhead = ['Op. Dr. Gail Gasimov', 'Ortopedi ve Travmatoloji Uzmanı, Liv Hospital Vadistanbul', '+90 535 393 43 22   info@drgailgasimov.com   drgailgasimov.com'];
 
     const vCols = [{ header: 'Vizit tarihi', width: 17, type: 'datetime' }, { header: 'Ad', width: 14 }, { header: 'Soyad', width: 16 }]
-      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }] : [])
+      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }, { header: 'Doğum tarihi', width: 13, type: 'date' }] : [])
+      .concat([{ header: 'Vizitteki yaş', width: 9, type: 'number' }])
       .concat([
         { header: 'Şikayet', width: 34, type: 'wrap' }, { header: 'Muayene bulgusu', width: 34, type: 'wrap' },
         { header: 'Tanı', width: 30, type: 'wrap' }, { header: 'ICD-10', width: 9 },
@@ -1534,13 +1573,15 @@
       ]);
     const vRows = [];
     for (const { x, vs } of sel) for (const v of vs) {
-      vRows.push([v.tarih, x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel)] : [])
+      const va = ageOf(x.p.dogum, v.tarih);
+      vRows.push([v.tarih, x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel), x.p.dogum || ''] : []).concat([va == null ? '' : va])
         .concat([v.sikayet, v.muayene, v.tani, v.icd, v.tedaviUygulanan, v.tedaviPlanlanan, v.plan, v.kontrol || '', v.onemliNot]));
     }
     vRows.sort((a, b) => a[0] - b[0]);
 
     const pCols = [{ header: 'Ad', width: 14 }, { header: 'Soyad', width: 16 }]
-      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }] : [])
+      .concat(ids ? [{ header: 'TC kimlik no', width: 14 }, { header: 'Telefon', width: 16 }, { header: 'Doğum tarihi', width: 13, type: 'date' }] : [])
+      .concat([{ header: 'Yaş', width: 7, type: 'number' }])
       .concat([
         { header: 'İlk vizit', width: 17, type: 'datetime' }, { header: 'Son vizit', width: 17, type: 'datetime' },
         { header: 'Vizit sayısı', width: 10, type: 'number' }, { header: 'Son tanı', width: 34, type: 'wrap' },
@@ -1552,7 +1593,8 @@
       .map(({ x, vs }) => {
         const lastTani = (vs.slice().reverse().find((v) => trim(v.tani)) || {}).tani || '';
         let k = ''; for (const v of vs) if (v.kontrol && v.kontrol > k) k = v.kontrol;
-        return [x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel)] : [])
+        const pa = ageOf(x.p.dogum);
+        return [x.p.ad || '', x.p.soyad || ''].concat(ids ? [x.p.tc || '', PK.fmtPhone(x.p.tel), x.p.dogum || ''] : []).concat([pa == null ? '' : pa])
           .concat([vs[0].tarih, vs[vs.length - 1].tarih, vs.length, lastTani, k, liveImages(x.p).length, x.note]);
       });
 
@@ -1584,7 +1626,7 @@
   }
   function advActive() {
     const a = S.adv;
-    return ['kisi', 'tani', 'icd', 'sikayet', 'muayene', 'tedavi', 'plan', 'not', 'from', 'to', 'kontrol'].some((k) => trim(a[k])) || a.gorsel;
+    return ['kisi', 'tani', 'icd', 'sikayet', 'muayene', 'tedavi', 'plan', 'not', 'from', 'to', 'kontrol', 'yasMin', 'yasMax'].some((k) => trim(a[k])) || a.gorsel;
   }
   function advRun() {
     const a = S.adv;
@@ -1598,7 +1640,13 @@
     const out = [];
     for (const x of livePatients()) {
       const p = x.p;
-      if (G.kisi.length && !qMatch([p.ad, p.soyad, p.tc, p.tel, PK.normPhone(p.tel)].join(' '), G.kisi)) continue;
+      if (G.kisi.length && !qMatch([p.ad, p.soyad, p.tc, p.tel, PK.normPhone(p.tel), fmtDob(p.dogum)].join(' '), G.kisi)) continue;
+      if (trim(a.yasMin) || trim(a.yasMax)) {
+        const ag = ageOf(p.dogum);
+        if (ag == null) continue;
+        if (trim(a.yasMin) && ag < Number(a.yasMin)) continue;
+        if (trim(a.yasMax) && ag > Number(a.yasMax)) continue;
+      }
       if (a.gorsel && !liveImages(p).length) continue;
       if (a.kontrol) {
         const k = kontrolTs(x.kontrol);
@@ -1675,7 +1723,8 @@
         '<label class="field"><span>Vizit tarihi: bitiş</span><input type="date" data-adv="to" value="' + esc(a.to) + '"></label>' +
       '</div></div>' +
       '<div class="card"><p class="card-h">Hasta</p><div class="grid2">' +
-        f('kisi', 'Ad, soyad, TC veya telefon', '') +
+        f('kisi', 'Ad, soyad, TC, telefon veya doğum tarihi', '') +
+        '<div class="field"><span>Yaş aralığı</span><div class="age-range"><input type="number" inputmode="numeric" min="0" max="120" data-adv="yasMin" value="' + esc(a.yasMin) + '" placeholder="En az" aria-label="En az yaş"><span>–</span><input type="number" inputmode="numeric" min="0" max="120" data-adv="yasMax" value="' + esc(a.yasMax) + '" placeholder="En çok" aria-label="En çok yaş"></div></div>' +
         '<label class="field"><span>Kontrol durumu</span>' + sel('kontrol', [['', 'Fark etmez'], ['yaklasan', 'Kontrolü 30 gün içinde'], ['gecmis', 'Kontrol tarihi geçmiş, gelmemiş'], ['var', 'Kontrol tarihi verilmiş']]) + '</label>' +
       '</div><label class="check" style="margin-top:12px"><input type="checkbox" data-adv="gorsel"' + (a.gorsel ? ' checked' : '') + '>Yalnızca görüntüsü olan hastalar</label></div>' +
       datalist('dlTani', topValues(['tani'], 60)) + datalist('dlIcd', topValues(['icd'], 40)) + datalist('dlTed', topValues(['tedaviUygulanan', 'tedaviPlanlanan'], 60)) +
@@ -1868,6 +1917,8 @@
     remAdd(el) { reminderDialog(el.dataset.pid, null); },
     waOpen(el) { waDialog({ pid: el.dataset.pid, text: '' }); },
     waNext(el) { waFollowupStart(el.dataset.pid, el.dataset.rid); },
+    waPlan(el) { waPlanDialog(el.dataset.pid); },
+    waDel(el) { waDelete(el.dataset.pid, el.dataset.rid); },
     waClose(el) { waClose(el.dataset.pid, el.dataset.rid); },
     tplAdd() { const l = readTplEditor(); l.push({ id: uid(), name: 'Yeni şablon', kind: 'single', steps: ['Merhaba {ad} {soyad}, '] }); setTplDraft(l); },
     tplDel(el) { const l = readTplEditor(); if (!confirm('“' + l[Number(el.dataset.i)].name + '” şablonu silinsin mi?')) return; l.splice(Number(el.dataset.i), 1); setTplDraft(l); },
@@ -1896,7 +1947,7 @@
       if (r) r.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     },
     advClear() {
-      S.adv = { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false };
+      S.adv = { kisi: '', tani: '', icd: '', sikayet: '', muayene: '', tedavi: '', tedaviTur: 'all', plan: '', not: '', from: '', to: '', kontrol: '', gorsel: false, yasMin: '', yasMax: '' };
       renderMain();
     },
     advExcel(el) {
