@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.5.0';
+  const VERSION = '1.7.0';
   const $app = document.getElementById('app');
   const $toast = document.getElementById('toast');
   const $dlg = document.getElementById('dlg');
@@ -40,7 +40,7 @@
     imgBusy: false
   };
 
-  const DEFAULT_SETTINGS = { lockMinutes: 5, autoSyncOnUnlock: true, clientId: '', driveConnected: false, driveFileId: '', lastSync: 0, lastBackup: 0, calendarOn: false, remTime: '09:00', calInitials: false, calId: '', calPushed: {}, lastCalSync: 0 };
+  const DEFAULT_SETTINGS = { lockMinutes: 5, autoSyncOnUnlock: true, clientId: '', driveConnected: false, driveFileId: '', lastSync: 0, lastBackup: 0, calendarOn: false, remTime: '09:00', calInitials: false, calId: '', calPushed: {}, lastCalSync: 0, vcfSuffix: '' };
 
   /* ================= IndexedDB ================= */
   const idb = (() => {
@@ -317,6 +317,27 @@
     };
     return String(text || '').replace(/\{(ad|soyad|doktor|tarih|saat)\}/g, (m, k) => vals[k]).replace(/ {2,}/g, ' ').replace(/ ,/g, ',');
   }
+  /* Rehbere kaydet: vCard dosyası; telefon açınca Kişiler uygulaması kaydı önerir. */
+  function vEsc(t) { return String(t || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1'); }
+  function contactName(p) { const sfx = trim(S.settings.vcfSuffix); return (trim(p.ad) + ' ' + trim(p.soyad)).trim() + (sfx ? ' ' + sfx : ''); }
+  function saveContact(pid) {
+    const p = getPatient(pid); if (!p) return;
+    const num = PK.normPhone(p.tel);
+    if (!num) { toast('Bu hastanın telefon numarası kayıtlı değil.', true); return; }
+    const sfx = trim(S.settings.vcfSuffix);
+    const vcf = ['BEGIN:VCARD', 'VERSION:3.0',
+      'N:' + vEsc(trim(p.soyad)) + ';' + vEsc(trim(p.ad) + (sfx ? ' ' + sfx : '')) + ';;;',
+      'FN:' + vEsc(contactName(p)),
+      'TEL;TYPE=CELL:' + num,
+      'END:VCARD', ''].join('\r\n');
+    const blob = new Blob([vcf], { type: 'text/vcard;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (contactName(p).replace(/[^\p{L}\p{N} ._-]/gu, '').trim() || 'hasta') + '.vcf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('Kişi kartı indirildi. Telefonda bildirimden açıp “Kaydet” deyin.');
+  }
   function waLink(p, text) { return 'https://wa.me/' + waNumber(p.tel) + (text ? '?text=' + encodeURIComponent(text) : ''); }
   /* Yeni takipler (kind 'wa') kendi tarihinde; eski sürümde hatırlatmaya bağlananlar bir gün önce */
   function waDueDate(r) { const d = new Date(r.date + 'T00:00:00').getTime(); return new Date(r.kind === 'wa' ? d : d - 86400000); }
@@ -354,7 +375,7 @@
       (opts.askAnswer ? '<label class="field"><span>Hastanın önceki cevabı (isteğe bağlı, hasta kartına not olarak kaydedilir)</span><textarea name="answer" rows="2" placeholder="Örn. Ağrı azaldı, gece ağrısı sürüyor"></textarea></label>' : '') +
       (opts.fixed ? '' : '<label class="field"><span>Şablon</span><select name="tpl"><option value="">Şablonsuz</option>' + opt + '</select></label>') +
       '<label class="field"><span>Mesaj</span><textarea name="text" rows="5">' + esc(initial) + '</textarea></label>' +
-      '<p class="hint">WhatsApp mesajı hazır yazılmış olarak açar; göndermek için WhatsApp\'ta gönder düğmesine basın.</p>' +
+      '<p class="hint">WhatsApp mesajı hazır yazılmış olarak açar; göndermek için WhatsApp\'ta gönder düğmesine basın. WhatsApp\'ta numara yerine ad görünsün isterseniz hastayı bir kez <button class="link" type="button" data-wa-vcf>rehbere kaydedin</button>.</p>' +
       '<div class="acts"><button class="btn ghost" type="button" data-dlg-cancel>Vazgeç</button>' +
       '<a class="btn wa-btn" target="_blank" rel="noopener noreferrer" data-wa-go href="#">' + IC.wa + 'WhatsApp\'ta aç</a></div></form>';
     const form = $dlg.querySelector('form');
@@ -364,6 +385,7 @@
     ta.addEventListener('input', upd);
     upd();
     form.querySelector('[data-dlg-cancel]').addEventListener('click', () => $dlg.close());
+    const vb = form.querySelector('[data-wa-vcf]'); if (vb) vb.addEventListener('click', () => saveContact(opts.pid));
     form.addEventListener('submit', (e) => e.preventDefault());
     go.addEventListener('click', () => {
       const text = ta.value, answer = form.answer ? trim(form.answer.value) : '';
@@ -1268,9 +1290,11 @@
         '<h2 class="p-name">' + esc(fullName(p)) + '</h2>' +
         '<div class="p-ids">' + tcHtml + (p.dogum ? '<span>Doğum <b>' + esc(fmtDob(p.dogum)) + '</b>' + (ageOf(p.dogum) != null ? ', ' + ageOf(p.dogum) + ' yaş' : '') + '</span>' : '') + '<span>Kayıt ' + esc(fFull.format(p.createdAt || Date.now())) + '</span><span>' + x.vs.length + ' vizit</span></div>' +
         '<div class="p-actions">' + call +
-          (tel ? '<button class="btn wa-btn" type="button" data-act="waOpen" data-pid="' + esc(p.id) + '">' + IC.wa + 'WhatsApp</button>' : '') +
+          (tel ? '<button class="btn wa-btn" type="button" data-act="waOpen" data-pid="' + esc(p.id) + '">' + IC.wa + 'WhatsApp</button>' +
+            '<button class="btn ghost" type="button" data-act="saveContact" data-pid="' + esc(p.id) + '" title="Hastayı telefon rehberine ekler; WhatsApp\'ta adıyla görünür">Rehbere kaydet</button>' : '') +
           '<a class="btn primary" href="#/h/' + esc(p.id) + '/vizit">' + IC.plus + 'Yeni vizit</a>' +
           '<a class="btn ghost" href="#/h/' + esc(p.id) + '/kimlik">Kimliği düzenle</a>' +
+          '<a class="btn ghost enabiz" href="https://enabiz.gov.tr/" target="_blank" rel="noopener noreferrer" data-act-soft="enabiz" title="e-Nabız giriş sayfasını açar. Girişi hasta kendisi yapar; hastanın şifresini girmeyin ve saklamayın.">e-Nabız\'ı aç ↗</a>' +
         '</div>' +
       '</header>' +
       (x.note ? '<aside class="alert-box"><h4>Önemli not</h4><p>' + esc(x.note) + '</p></aside>' : '') +
@@ -1793,6 +1817,8 @@
       '<section class="set" id="setWa"><h3>WhatsApp mesaj şablonları</h3>' +
         '<p class="muted">Şablonlarda şu alanlar hasta bilgisiyle doldurulur: {ad}, {soyad}, {tarih}, {saat} (hatırlatmanın tarihi ve saati), {doktor}. “Soru-cevap takibi” şablonunda mesajlar sırayla gönderilir; hasta cevap verince sıradaki soru için düğme çıkar.</p>' +
         '<div id="tplEditor">' + tplEditorHTML() + '</div>' +
+        '<div class="grid2" style="margin-top:8px"><label class="field"><span>Rehbere kaydederken ada eklenecek ek (isteğe bağlı)</span><input data-change="vcfSuffix" value="' + esc(st.vcfSuffix || '') + '" placeholder="Örn. (Hasta) veya - Ortopedi" maxlength="30"></label></div>' +
+        '<p class="small muted">Örnek: “Şükrü Yılmaz (Hasta)”. Hastaları rehberde diğer kişilerden ayırmanızı kolaylaştırır.</p>' +
       '</section>' +
       '<section class="set"><h3>Otomatik kilit</h3>' +
         '<label class="field"><span>Bu süre boyunca işlem yapılmazsa defter kilitlenir</span><select data-change="lockMinutes">' + [1, 3, 5, 10, 15, 30].map(opt).join('') + '</select></label>' +
@@ -1916,6 +1942,7 @@
     openImage(el) { openImageViewer(el.dataset.pid, el.dataset.iid); },
     remAdd(el) { reminderDialog(el.dataset.pid, null); },
     waOpen(el) { waDialog({ pid: el.dataset.pid, text: '' }); },
+    saveContact(el) { saveContact(el.dataset.pid); },
     waNext(el) { waFollowupStart(el.dataset.pid, el.dataset.rid); },
     waPlan(el) { waPlanDialog(el.dataset.pid); },
     waDel(el) { waDelete(el.dataset.pid, el.dataset.rid); },
@@ -2130,6 +2157,7 @@
       if (el.checked) toast('Şimdi “Google Takvim iznini ver ve eşitle” düğmesine dokunun.');
     },
     async remTime(el) { if (el.value) { S.settings.remTime = el.value; await saveSettings(); } },
+    async vcfSuffix(el) { S.settings.vcfSuffix = trim(el.value); await saveSettings(); toast('Kaydedildi.'); },
     async calInitials(el) { S.settings.calInitials = el.checked; await saveSettings(); scheduleSync(); toast('Kaydedildi. Takvim bir sonraki eşitlemede güncellenir.'); },
     xlRange(el) { S.xl.range = el.value; refreshXl(); },
     xlFrom(el) { S.xl.from = el.value; refreshXl(); },
@@ -2139,6 +2167,7 @@
   };
 
   $app.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act-soft="enabiz"]')) toast('e-Nabız açılıyor. Girişi hasta kendi telefonunda yapsın; şifresini sizin cihazınıza girmeyin.');
     const el = e.target.closest('[data-act]');
     if (!el || !$app.contains(el)) return;
     const fn = ACT[el.dataset.act];

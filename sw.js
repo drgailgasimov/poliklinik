@@ -1,6 +1,6 @@
 /* Poliklinik Defteri — çevrimdışı çalışma için service worker.
    Yalnızca uygulama dosyaları ve yazı tipleri önbelleğe alınır; hasta verisi asla. */
-const VERSION = 'pk-v1.5.0';
+const VERSION = 'pk-v1.7.0';
 const SHELL = [
   './', 'index.html', 'app.css', 'core.js', 'drive.js', 'xlsx.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
